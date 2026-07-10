@@ -1,0 +1,23 @@
+# Nix build outputs
+result
+result-*
+
+# direnv (if you add an .envrc later)
+.direnv/
+
+# Editor / OS cruft
+*.swp
+*~
+.DS_Store
+
+# ---- Secrets ----
+# IMPORTANT: secrets/secrets.yaml is sops-ENCRYPTED and IS committed on purpose
+# — that's how sops-nix works. Do NOT ignore it.
+#
+# Never commit plaintext secrets or age *private* keys. Age private keys live in
+# ~/.config/sops/age/ (outside this repo); keep them there. The patterns below
+# are a safety net against accidentally dropping a decrypted copy in the tree.
+*.dec
+*.decrypted
+keys.txt
+*.agekey

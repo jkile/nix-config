@@ -1,0 +1,23 @@
+# sops policy: which age recipients every secrets file is encrypted to.
+#
+# Two kinds of recipients:
+#   - admin keys : your PERSONAL age key(s), so you (a human) can edit secrets.
+#   - host keys  : each MACHINE's age key (derived from its SSH host key), so
+#                  that machine can decrypt secrets at activation.
+#
+# Every secret is encrypted to ALL recipients below. When you add a new machine,
+# append its host key here and run `sops updatekeys secrets/secrets.yaml`.
+#
+# Replace the placeholder values, then delete these two TODO comments.
+keys:
+  # TODO: your personal key — `age-keygen -y ~/.config/sops/age/keys.txt`
+  - &admin_jakek age18fqt6evstd7vl44zst9hhjqhqts26w8lz4a8dnnhdaqjdyj4dp2qhqsuuh
+  # TODO: this machine — `ssh-to-age < /etc/ssh/ssh_host_ed25519_key.pub`
+  - &host_nixos age1hf9schr77a95764dq5awdap994m67f2surczxaunzxcj93nnxsdq8erqkp
+
+creation_rules:
+  - path_regex: secrets/[^/]+\.(yaml|json)$
+    key_groups:
+      - age:
+          - *admin_jakek
+          - *host_nixos
