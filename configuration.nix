@@ -2,18 +2,23 @@
 # your system.  Help is available in the configuration.nix(5) man page
 # and in the NixOS manual (accessible by running ‘nixos-help’).
 
-{ config, pkgs, inputs, ... }:
+{
+  config,
+  pkgs,
+  inputs,
+  ...
+}:
 
 {
-  imports =
-    [ # Include the results of the hardware scan.
-      ./hardware-configuration.nix
-    ];
+  imports = [
+    # Include the results of the hardware scan.
+    ./hardware-configuration.nix
+  ];
 
   # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
-  
+
   boot.initrd.kernelModules = [ "amdgpu" ];
   hardware.enableRedistributableFirmware = true;
 
@@ -24,7 +29,7 @@
     enable = true;
     enable32Bit = true; # 32-bit GL/VA-API (games, wine, some media paths)
     extraPackages = with pkgs; [
-      libva-utils    # `vainfo` diagnostics; Mesa/radeonsi provides native VA-API
+      libva-utils # `vainfo` diagnostics; Mesa/radeonsi provides native VA-API
       libvdpau-va-gl # VDPAU->VA-API shim for the odd app that wants VDPAU
     ];
   };
@@ -32,7 +37,8 @@
   # RDNA2 is most stable on Mesa's RADV; ensure nothing silently picks amdvlk.
   environment.variables.AMD_VULKAN_ICD = "RADV";
 
-  boot.initrd.luks.devices."luks-8c1d225b-e2fc-4565-a496-96a750c2fcb6".device = "/dev/disk/by-uuid/8c1d225b-e2fc-4565-a496-96a750c2fcb6";
+  boot.initrd.luks.devices."luks-8c1d225b-e2fc-4565-a496-96a750c2fcb6".device =
+    "/dev/disk/by-uuid/8c1d225b-e2fc-4565-a496-96a750c2fcb6";
   networking.hostName = "nixos"; # Define your hostname.
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
@@ -71,10 +77,16 @@
   users.users."jakek" = {
     isNormalUser = true;
     description = "Jake Kile";
-    extraGroups = [ "networkmanager" "wheel" ];
-    packages = with pkgs; [];
+    extraGroups = [
+      "networkmanager"
+      "wheel"
+      "docker"
+    ];
+    packages = with pkgs; [ ];
     shell = pkgs.zsh; # login shell — so ghostty (and every terminal) launches zsh
   };
+
+  virtualisation.docker.enable = true;
 
   # Required for zsh to be a valid login shell (adds it to /etc/shells + system
   # zsh init). The interactive config itself lives in home.nix's programs.zsh.
@@ -86,8 +98,8 @@
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
-  #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-  #  wget
+    #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
+    #  wget
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
@@ -142,7 +154,6 @@
   # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
   system.stateVersion = "26.05"; # Did you read the comment?
 
-
   # Audio — PipeWire, pinned explicitly rather than relying on COSMIC's
   # implicit enable, so the full stack (ALSA/Pulse/JACK) is declared and
   # diagnosable. The Metric Halo ULN-8 enumerates as a USB Audio Class 2
@@ -162,7 +173,14 @@
     # app asks for when the graph is idle, so nothing gets resampled.
     extraConfig.pipewire."10-clock-allowed-rates" = {
       "context.properties" = {
-        "default.clock.allowed-rates" = [ 44100 48000 88200 96000 176400 192000 ];
+        "default.clock.allowed-rates" = [
+          44100
+          48000
+          88200
+          96000
+          176400
+          192000
+        ];
       };
     };
 
@@ -186,8 +204,7 @@
           matches = [
             { "device.name" = "alsa_card.usb-Metric_Halo_ULN-8mkIV_49485_12x12-00"; }
           ];
-          actions.update-props."device.profile" =
-            "output:multichannel-output+input:multichannel-input";
+          actions.update-props."device.profile" = "output:multichannel-output+input:multichannel-input";
         }
       ];
     };
@@ -225,6 +242,9 @@
   services.desktopManager.cosmic.enable = true;
   services.displayManager.cosmic-greeter.enable = true;
 
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
 
 }
