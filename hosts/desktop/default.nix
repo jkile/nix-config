@@ -27,6 +27,32 @@
   # RDNA2 is most stable on Mesa's RADV; ensure nothing silently picks amdvlk.
   environment.variables.AMD_VULKAN_ICD = "RADV";
 
+  # ---- Steam / gaming ----
+  # Always the module, never the bare `steam` package: it provides the FHS
+  # runtime, the 32-bit driver path (satisfied by hardware.graphics.enable32Bit
+  # above — required for Proton/DXVK's 32-bit Vulkan), controller udev rules, and
+  # steam-run. Unfree is already allowed in modules/common.nix.
+  programs.steam = {
+    enable = true;
+    remotePlay.openFirewall = true; # Steam Remote Play / In-Home Streaming
+    localNetworkGameTransfers.openFirewall = true; # LAN game transfers between machines
+    # gamescopeSession.enable = true; # optional: adds a "Steam (gamescope)" login session
+  };
+
+  # gamescope — micro-compositor for clean fullscreen scaling / VRR under
+  # Wayland (COSMIC). Use per-title via a Steam launch option: `gamescope -- %command%`.
+  programs.gamescope.enable = true;
+
+  # gamemode — transient perf tweaks (CPU governor, niceness) only while a game
+  # runs. Enable per-title in Steam launch options: `gamemoderun %command%`.
+  programs.gamemode.enable = true;
+
+  # FPS/vitals overlay + a Proton tweak helper.
+  environment.systemPackages = with pkgs; [
+    mangohud
+    protontricks
+  ];
+
   # Encrypted swap partition (the root LUKS device is declared in
   # hardware-configuration.nix; the allowDiscards line below merges into it).
   # allowDiscards on both so TRIM (services.fstrim, enabled in common) reaches
