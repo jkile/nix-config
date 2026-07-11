@@ -75,6 +75,13 @@ in
       # Comment out if you'd rather clone with git@github.com:... explicitly.
       url."git@github.com:".insteadOf = "https://github.com/";
     };
+    # Use the work identity for anything under ~/code/overview.
+    includes = [
+      {
+        condition = "gitdir:~/code/overview/";
+        contents.user.email = "jake@overview.app";
+      }
+    ];
   };
 
   # SSH — the github.com key is provisioned by sops-nix (see configuration.nix),
@@ -244,6 +251,14 @@ in
   programs.zoxide = {
     enable = true;
     enableZshIntegration = true; # adds `z` / `zi`
+  };
+
+  # direnv + nix-direnv — auto-load per-project dev shells (e.g. ~/code/overview's
+  # flake) on `cd`. Pairs with the .direnv/ entry already in .gitignore.
+  programs.direnv = {
+    enable = true;
+    nix-direnv.enable = true;
+    enableZshIntegration = true;
   };
 
   programs.tealdeer = {
