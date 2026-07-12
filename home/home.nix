@@ -51,11 +51,17 @@ in
     claude-code
     qpwgraph # PipeWire patchbay — route the ULN-8's 12 discrete channels
     pavucontrol # quick check of device profile / per-channel levels
-    # Secrets tooling — for editing/encrypting ./secrets (see setup notes).
+
     sops
     age
     ssh-to-age
+
+    fuzzel
+    waybar
+    mako
   ];
+
+  xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;
   programs.home-manager.enable = true;
 
   programs.zed-editor.enable = true;

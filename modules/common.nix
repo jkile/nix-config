@@ -69,6 +69,8 @@
   services.desktopManager.cosmic.enable = true;
   services.displayManager.cosmic-greeter.enable = true;
 
+  programs.niri.enable = true;
+
   # OpenSSH — enabled primarily so each host generates its
   # /etc/ssh/ssh_host_ed25519_key, which sops-nix uses to decrypt secrets at
   # activation. The daemon is NOT exposed (openFirewall = false, no passwords).
