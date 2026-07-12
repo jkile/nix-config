@@ -29,6 +29,30 @@ let
     nord14 = "A3BE8C"; # green
     nord15 = "B48EAD"; # purple
   };
+
+  # Discord hangs under Wayland-native rendering on this machine (the renderer
+  # pegs a core on the loading screen, even with --disable-gpu). Running it under
+  # XWayland (via xwayland-satellite on :12, spawned by niri) works. This wrapper
+  # forces just Discord onto X11 — NIXOS_OZONE_WL stays global so other Electron
+  # apps keep sharp Wayland-native rendering.
+  #
+  # XWayland can't do per-monitor scaling, so Discord renders at native 1x. On
+  # the 2x Apple display use Discord's own zoom (Ctrl+= / Ctrl+-, which persists)
+  # to size it up; leave it at 100% on the 1x ultrawide.
+  discord-x11 = pkgs.symlinkJoin {
+    name = "discord-x11";
+    paths = [ pkgs.discord ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      for b in Discord discord; do
+        rm -f "$out/bin/$b"
+        makeWrapper ${pkgs.discord}/bin/Discord "$out/bin/$b" \
+          --unset NIXOS_OZONE_WL \
+          --set DISPLAY :12 \
+          --add-flags "--ozone-platform=x11"
+      done
+    '';
+  };
 in
 {
   imports = [ inputs.zen-browser.homeModules.beta ];
@@ -38,7 +62,8 @@ in
   home.stateVersion = "26.05";
 
   home.packages = with pkgs; [
-    pkgs.discord
+    discord-x11 # Discord wrapped to run under XWayland (see let binding above)
+    xwayland-satellite # provides the :12 X server that discord-x11 targets
     ripgrep
     fd
     procs
@@ -191,22 +216,31 @@ in
         prompt = ''"❯ "'';
         icon-theme = "Nordzy-dark";
         layer = "overlay";
-        width = 40;
+        width = 38;
+        lines = 8;
+        # Roomier padding + taller rows read as sleeker/less cramped.
+        horizontal-pad = 24;
+        vertical-pad = 18;
+        inner-pad = 14;
+        line-height = 26;
+        image-size-ratio = 0.9;
       };
       border = {
-        width = 2;
-        radius = 12;
+        # Thin, high-radius border feels more modern than a chunky one.
+        width = 1;
+        radius = 16;
       };
       # fuzzel colors are RRGGBBAA hex with no leading '#'.
       colors = {
-        background = "${nord.nord0}f2";
+        background = "${nord.nord0}f0";
         text = "${nord.nord4}ff";
-        prompt = "${nord.nord9}ff";
+        prompt = "${nord.nord8}ff";
+        input = "${nord.nord6}ff";
         match = "${nord.nord8}ff";
-        selection = "${nord.nord2}ff";
+        selection = "${nord.nord3}ff";
         selection-text = "${nord.nord6}ff";
-        selection-match = "${nord.nord7}ff";
-        border = "${nord.nord10}ff";
+        selection-match = "${nord.nord8}ff";
+        border = "${nord.nord3}cc";
       };
     };
   };

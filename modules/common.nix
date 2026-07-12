@@ -71,6 +71,11 @@
 
   programs.niri.enable = true;
 
+  # Run Electron/Chromium apps (Discord, Zed, etc.) natively on Wayland.
+  # Without this they default to the X11 backend, which fails under niri since
+  # there's no XWayland server running ("Missing X server or $DISPLAY").
+  environment.sessionVariables.NIXOS_OZONE_WL = "1";
+
   # OpenSSH — enabled primarily so each host generates its
   # /etc/ssh/ssh_host_ed25519_key, which sops-nix uses to decrypt secrets at
   # activation. The daemon is NOT exposed (openFirewall = false, no passwords).
