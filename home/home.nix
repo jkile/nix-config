@@ -45,9 +45,8 @@ in
     btop
     nerd-fonts.jetbrains-mono
     nerd-fonts.symbols-only
-    nordic
-    nordzy-icon-theme
-    nordzy-cursor-theme
+    # Nord GTK theme + Nordzy icons/cursor are installed via the `gtk` module
+    # below (theme/iconTheme/cursorTheme .package), so they're not listed here.
     claude-code
     qpwgraph # PipeWire patchbay — route the ULN-8's 12 discrete channels
     pavucontrol # quick check of device profile / per-channel levels
@@ -55,14 +54,190 @@ in
     sops
     age
     ssh-to-age
-
-    fuzzel
-    waybar
-    mako
   ];
 
   xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;
   programs.home-manager.enable = true;
+
+  # waybar — styled to echo COSMIC's panel: a floating, rounded, translucent
+  # dark bar (Nord). Installed here but only started by niri's spawn-at-startup
+  # (systemd.enable is off by default), so it stays niri-session only.
+  programs.waybar = {
+    enable = true;
+    settings.mainBar = {
+      layer = "top";
+      position = "top";
+      height = 34;
+      spacing = 6;
+      # Float the bar off the screen edges (the COSMIC look).
+      margin-top = 6;
+      margin-left = 10;
+      margin-right = 10;
+
+      modules-left = [ "niri/workspaces" ];
+      modules-center = [ "clock" ];
+      modules-right = [
+        "pulseaudio"
+        "network"
+        "tray"
+      ];
+
+      "niri/workspaces".format = "{icon}";
+      clock = {
+        format = "  {:%a %d %b   %H:%M}";
+        tooltip-format = "<tt><small>{calendar}</small></tt>";
+      };
+      pulseaudio = {
+        format = "{icon} {volume}%";
+        format-muted = "󰝟 muted";
+        format-icons.default = [
+          "󰕿"
+          "󰖀"
+          "󰕾"
+        ];
+        on-click = "pavucontrol";
+      };
+      network = {
+        format-wifi = "󰤨 {essid}";
+        format-ethernet = "󰈀 wired";
+        format-disconnected = "󰤭 offline";
+        tooltip-format = "{ifname} · {ipaddr}";
+      };
+      tray = {
+        spacing = 8;
+        icon-size = 16;
+      };
+    };
+
+    # Nord palette (matches the rest of this config). Translucent surfaces use
+    # rgba literals: nord0 = 46,52,64 · nord1 = 59,66,82 · nord3 = 76,86,106.
+    style = ''
+      * {
+        font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font";
+        font-size: 13px;
+        min-height: 0;
+      }
+
+      window#waybar {
+        background-color: rgba(46, 52, 64, 0.85);
+        border: 1px solid rgba(76, 86, 106, 0.6);
+        border-radius: 12px;
+        color: #${nord.nord4};
+      }
+
+      #workspaces, #clock, #pulseaudio, #network, #tray {
+        padding: 0 10px;
+        margin: 4px 2px;
+      }
+
+      #workspaces button {
+        padding: 0 8px;
+        margin: 4px 2px;
+        color: #${nord.nord4};
+        background: transparent;
+        border-radius: 8px;
+      }
+      #workspaces button.active {
+        background-color: #${nord.nord10};
+        color: #${nord.nord6};
+      }
+      #workspaces button:hover {
+        background-color: rgba(76, 86, 106, 0.6);
+      }
+
+      #clock { color: #${nord.nord8}; font-weight: bold; }
+      #pulseaudio { color: #${nord.nord7}; }
+      #network { color: #${nord.nord9}; }
+    '';
+  };
+
+  # Dark mode + Nord theming. niri has no settings daemon to broadcast a
+  # light/dark preference, so we set it explicitly across the toolkits:
+  #  - GTK3 apps read the theme name + the prefer-dark flag below.
+  #  - libadwaita/GTK4 apps and browsers read `color-scheme` over the Settings
+  #    portal, served by xdg-desktop-portal-gnome (which niri wires up already).
+  # These are user-level, so they apply in both the niri and COSMIC sessions.
+  gtk = {
+    enable = true;
+    theme = {
+      name = "Nordic";
+      package = pkgs.nordic;
+    };
+    iconTheme = {
+      name = "Nordzy-dark";
+      package = pkgs.nordzy-icon-theme;
+    };
+    cursorTheme = {
+      name = "Nordzy-cursors";
+      package = pkgs.nordzy-cursor-theme;
+    };
+    gtk3.extraConfig.gtk-application-prefer-dark-theme = 1;
+    gtk4.extraConfig.gtk-application-prefer-dark-theme = 1;
+  };
+
+  dconf.settings."org/gnome/desktop/interface" = {
+    color-scheme = "prefer-dark";
+    gtk-theme = "Nordic";
+  };
+
+  # fuzzel launcher (Mod+D / Mod+Space) — Nord colors, rounded to match waybar.
+  # Config-only module; fuzzel is not a daemon, so nothing auto-starts.
+  programs.fuzzel = {
+    enable = true;
+    settings = {
+      main = {
+        font = "JetBrainsMono Nerd Font:size=12";
+        terminal = "ghostty";
+        prompt = ''"❯ "'';
+        icon-theme = "Nordzy-dark";
+        layer = "overlay";
+        width = 40;
+      };
+      border = {
+        width = 2;
+        radius = 12;
+      };
+      # fuzzel colors are RRGGBBAA hex with no leading '#'.
+      colors = {
+        background = "${nord.nord0}f2";
+        text = "${nord.nord4}ff";
+        prompt = "${nord.nord9}ff";
+        match = "${nord.nord8}ff";
+        selection = "${nord.nord2}ff";
+        selection-text = "${nord.nord6}ff";
+        selection-match = "${nord.nord7}ff";
+        border = "${nord.nord10}ff";
+      };
+    };
+  };
+
+  # mako notification daemon — Nord styling. This HM module installs the package
+  # + config only (no systemd service), so mako still runs only when niri starts
+  # it via spawn-at-startup; COSMIC keeps using its own notifier.
+  services.mako = {
+    enable = true;
+    settings = {
+      font = "JetBrainsMono Nerd Font 11";
+      background-color = "#${nord.nord0}f2";
+      text-color = "#${nord.nord4}";
+      border-color = "#${nord.nord10}";
+      border-size = 2;
+      border-radius = 12;
+      progress-color = "over #${nord.nord3}";
+      default-timeout = 5000;
+      anchor = "top-right";
+      margin = 12;
+      padding = 12;
+      width = 360;
+      icons = true;
+      max-icon-size = 48;
+      # Urgent notifications get a red (nord11) border and don't auto-dismiss.
+      "urgency=high" = {
+        border-color = "#${nord.nord11}";
+        default-timeout = 0;
+      };
+    };
+  };
 
   programs.zed-editor.enable = true;
 

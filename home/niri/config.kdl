@@ -106,6 +106,19 @@ input {
     position x=1280 y=0
 }
 
+// Physical layout: LG on the left, Apple Studio Display on the right.
+// The LG is scale 1 with a logical width of 3440, so the Studio Display
+// (scale 2 -> logical 2560x1440) sits directly to its right at x=3440.
+output "LG Electronics LG ULTRAGEAR 108NTWG29193" {
+    scale 1
+    position x=0 y=0
+}
+
+output "Apple Computer Inc StudioDisplay 0x7AF364D3" {
+    scale 2
+    position x=3440 y=0
+}
+
 // Settings that influence how windows are positioned and sized.
 // Find more information on the wiki:
 // https://niri-wm.github.io/niri/Configuration:-Layout
