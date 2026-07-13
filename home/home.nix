@@ -96,6 +96,79 @@ let
         }'
     '';
   };
+
+  # ---- Wallpaper (awww) ----
+  # awww is the maintained fork of swww in nixpkgs 26.05 (`pkgs.swww` is now an
+  # alias for it); the CLI is unchanged but the binaries are awww/awww-daemon.
+  # A reproducible Nord gradient generated at build time with ImageMagick, so
+  # there's no binary blob committed to the repo. awww scales/crops it per
+  # output (the ultrawide LG and the Studio Display have different aspect
+  # ratios). To use your own image instead, point set-wallpaper's `awww img`
+  # at a different path. runCommand's name ends in .png, so $out does too and
+  # ImageMagick infers the PNG encoder from it.
+  nordWallpaper =
+    pkgs.runCommand "nord-wallpaper.png" { nativeBuildInputs = [ pkgs.imagemagick ]; }
+      ''
+        magick -size 3840x2160 -define gradient:angle=135 \
+          gradient:'#2E3440'-'#434C5E' "$out"
+      '';
+
+  # Paints the wallpaper once awww-daemon is up. niri spawns the daemon and this
+  # script separately (see config.kdl); the loop polls the daemon's socket so a
+  # cold start can't race the `img` call, capped at ~5s so it never spins.
+  setWallpaper = pkgs.writeShellApplication {
+    name = "set-wallpaper";
+    runtimeInputs = [ pkgs.awww ];
+    text = ''
+      for _ in $(seq 1 50); do
+        awww query >/dev/null 2>&1 && break
+        sleep 0.1
+      done
+      awww img "${nordWallpaper}" --transition-type fade --transition-duration 2
+    '';
+  };
+
+  # Clipboard history picker (Mod+Shift+C). The wl-paste --watch listeners
+  # (started by niri) feed cliphist's store; this lists it through fuzzel's
+  # dmenu mode and copies the chosen entry back to the clipboard. Uses the same
+  # Nord fuzzel config as the launcher.
+  clipboardHistory = pkgs.writeShellApplication {
+    name = "clipboard-history";
+    runtimeInputs = [
+      pkgs.cliphist
+      pkgs.fuzzel
+      pkgs.wl-clipboard
+    ];
+    text = ''
+      cliphist list \
+        | fuzzel --dmenu --prompt "󰅍  " --width 60 --lines 12 \
+        | cliphist decode \
+        | wl-copy
+    '';
+  };
+
+  # Power menu (Mod+Shift+E). A fuzzel dmenu of session actions. Log out uses
+  # niri's own quit; Ctrl+Alt+Delete stays wired to the raw quit-with-
+  # confirmation in config.kdl as an escape hatch. No Lock entry yet — add one
+  # once a screen locker is in the config. `|| chosen=""` swallows the non-zero
+  # exit when the menu is dismissed so nothing fires.
+  powerMenu = pkgs.writeShellApplication {
+    name = "power-menu";
+    runtimeInputs = [
+      pkgs.fuzzel
+      pkgs.systemd
+    ];
+    text = ''
+      chosen=$(printf '%s\n' "󰗽  Log out" "󰤄  Suspend" "󰜉  Reboot" "󰐥  Shut down" \
+        | fuzzel --dmenu --prompt "⏻  " --width 20 --lines 4) || chosen=""
+      case "$chosen" in
+        *"Log out")   niri msg action quit --skip-confirmation ;;
+        *"Suspend")   systemctl suspend ;;
+        *"Reboot")    systemctl reboot ;;
+        *"Shut down") systemctl poweroff ;;
+      esac
+    '';
+  };
 in
 {
   imports = [ inputs.zen-browser.homeModules.beta ];
@@ -124,6 +197,19 @@ in
     ewwAudioState
     ewwAudioCtl
     waybarMedia # now-playing script for the waybar custom/media module
+
+    # niri-session workflow tools — wallpaper, clipboard, screenshots, night
+    # light. Their binds/spawns live in home/niri/config.kdl.
+    awww # animated wallpaper daemon (swww fork; spawn-at-startup: awww-daemon)
+    setWallpaper # paints the Nord gradient once awww-daemon's socket is up
+    wl-clipboard # wl-copy/wl-paste — clipboard plumbing (also feeds cliphist)
+    cliphist # clipboard history store (fed by the wl-paste --watch listeners)
+    clipboardHistory # Mod+Shift+C — fuzzel clipboard-history picker
+    powerMenu # Mod+Shift+E — fuzzel session menu (logout/suspend/reboot/off)
+    wlsunset # blue-light filter on a day/night curve (LA coords, wlr-gamma)
+    grim # screenshot capture backend for the swappy region grab
+    slurp # Nord-tinted region selector for the swappy grab
+    swappy # screenshot annotation (Mod+Shift+S)
 
     sops
     age
@@ -172,6 +258,20 @@ in
     progressbar:disabled progress { background-color: #${nord.nord3}; }
     image:disabled, label:disabled { color: #${nord.nord3}; }
   '';
+
+  # swappy — screenshot annotation (Mod+Shift+S grabs a region into it). Saves
+  # to the same folder niri's own screenshots use, so everything lands together.
+  xdg.configFile."swappy/config".text = ''
+    [Default]
+    save_dir=/home/jakek/Pictures/Screenshots
+    save_filename_format=Screenshot swappy %Y-%m-%d %H-%M-%S.png
+    show_panel=false
+    early_exit=false
+    fill_shape=false
+  '';
+
+  # Make sure the screenshot folder exists so both niri and swappy can write it.
+  home.file."Pictures/Screenshots/.keep".text = "";
 
   # eww — the audio control panel HUD (Mod+A, or click the waybar volume
   # module). Config lives as readable files in home/eww/; the module writes
@@ -273,21 +373,19 @@ in
       # the index isn't stable across reboots, and thermal_zone0 here is the
       # wifi card, not the CPU. See the writeShellScript body for details.
       "custom/temp" = {
-        exec = "${
-          pkgs.writeShellScript "waybar-temp" ''
-            for h in /sys/class/hwmon/hwmon*; do
-              if [ "$(cat "$h/name" 2>/dev/null)" = "k10temp" ] && [ -f "$h/temp1_input" ]; then
-                c=$(( $(cat "$h/temp1_input") / 1000 ))
-                if [ "$c" -ge 85 ]; then cls="critical"; icon="";
-                elif [ "$c" -ge 70 ]; then cls="warning"; icon="";
-                else cls="normal"; icon=""; fi
-                printf '{"text":"%s %s°C","class":"%s","tooltip":"CPU (k10temp): %s°C"}\n' "$icon" "$c" "$cls" "$c"
-                exit 0
-              fi
-            done
-            printf '{"text":"","class":"normal"}\n'
-          ''
-        }";
+        exec = "${pkgs.writeShellScript "waybar-temp" ''
+          for h in /sys/class/hwmon/hwmon*; do
+            if [ "$(cat "$h/name" 2>/dev/null)" = "k10temp" ] && [ -f "$h/temp1_input" ]; then
+              c=$(( $(cat "$h/temp1_input") / 1000 ))
+              if [ "$c" -ge 85 ]; then cls="critical"; icon="";
+              elif [ "$c" -ge 70 ]; then cls="warning"; icon="";
+              else cls="normal"; icon=""; fi
+              printf '{"text":"%s %s°C","class":"%s","tooltip":"CPU (k10temp): %s°C"}\n' "$icon" "$c" "$cls" "$c"
+              exit 0
+            fi
+          done
+          printf '{"text":"","class":"normal"}\n'
+        ''}";
         return-type = "json";
         interval = 5;
         format = "{}";
@@ -322,16 +420,14 @@ in
       # WireGuard link; we detect a proton/wg interface to show connected
       # state, and click opens the GUI. Styled green/grey via the class.
       "custom/protonvpn" = {
-        exec = "${
-          pkgs.writeShellScript "waybar-protonvpn" ''
-            iface=$(ip -o link show 2>/dev/null | grep -oE 'proton0|pvpn[a-z0-9]*|wg[0-9]+' | head -n1)
-            if [ -n "$iface" ]; then
-              printf '{"text":"󰦝 VPN","class":"connected","tooltip":"ProtonVPN connected (%s) — click to open app"}\n' "$iface"
-            else
-              printf '{"text":"󰦞 VPN","class":"disconnected","tooltip":"ProtonVPN disconnected — click to open app"}\n'
-            fi
-          ''
-        }";
+        exec = "${pkgs.writeShellScript "waybar-protonvpn" ''
+          iface=$(ip -o link show 2>/dev/null | grep -oE 'proton0|pvpn[a-z0-9]*|wg[0-9]+' | head -n1)
+          if [ -n "$iface" ]; then
+            printf '{"text":"󰦝 VPN","class":"connected","tooltip":"ProtonVPN connected (%s) — click to open app"}\n' "$iface"
+          else
+            printf '{"text":"󰦞 VPN","class":"disconnected","tooltip":"ProtonVPN disconnected — click to open app"}\n'
+          fi
+        ''}";
         return-type = "json";
         interval = 5;
         format = "{}";
@@ -747,6 +843,7 @@ in
         "ctrl+shift+o=text:ovw\\n" # zellij `overview` workspace
         "ctrl+shift+e=text:hx .\\n" # helix (default editor)
         "ctrl+shift+g=text:btop\\n" # btop system monitor
+        "ctrl+shift+l=text:lazygit\\n" # lazygit git TUI
       ];
     };
   };
@@ -822,6 +919,43 @@ in
       navigate = true;
       line-numbers = true;
       syntax-theme = "Nord";
+    };
+  };
+
+  # lazygit — git TUI (ghostty ctrl+shift+l). Uses delta as its diff pager to
+  # match the git config above, and a Nord palette to match everything else.
+  programs.lazygit = {
+    enable = true;
+    settings = {
+      gui = {
+        nerdFontsVersion = "3";
+        theme = {
+          activeBorderColor = [
+            "#88C0D0"
+            "bold"
+          ];
+          inactiveBorderColor = [ "#4C566A" ];
+          searchingActiveBorderColor = [
+            "#88C0D0"
+            "bold"
+          ];
+          optionsTextColor = [ "#81A1C1" ];
+          selectedLineBgColor = [ "#3B4252" ];
+          cherryPickedCommitBgColor = [ "#434C5E" ];
+          cherryPickedCommitFgColor = [ "#88C0D0" ];
+          unstagedChangesColor = [ "#BF616A" ];
+          defaultFgColor = [ "#D8DEE9" ];
+        };
+      };
+      # lazygit 0.55+ replaced the single git.paging object with a git.pagers
+      # array. HM symlinks this config read-only, so the old key made lazygit
+      # attempt (and fail) an in-place migration on every launch.
+      git.pagers = [
+        {
+          colorArg = "always";
+          pager = "delta --dark --paging=never";
+        }
+      ];
     };
   };
 

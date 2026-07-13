@@ -172,21 +172,21 @@ layout {
         // off
 
         // How many logical pixels the ring extends out from the windows.
-        width 4
+        width 3
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
         // - RGB hex: "#rgb", "#rgba", "#rrggbb", "#rrggbbaa"
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
-        // Color of the ring on the active monitor.
-        active-color "#7fc8ff"
+        // Nord frost gradient (nord8 -> nord10, 45°) to match waybar/fuzzel/mako.
+        active-gradient from="#88C0D0" to="#5E81AC" angle=45
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#505050"
+        inactive-color "#3B4252"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -227,8 +227,9 @@ layout {
 
     // You can enable drop shadows for windows.
     shadow {
-        // Uncomment the next line to enable shadows.
-        // on
+        // Enabled — draws correctly around the rounded corners set by the
+        // geometry-corner-radius window rule below.
+        on
 
         // By default, the shadow draws only around its window, and not behind it.
         // Uncomment this setting to make the shadow draw behind its window.
@@ -291,6 +292,21 @@ spawn-sh-at-startup "swayosd-server --style $HOME/.config/swayosd/style.css"
 // eww daemon for the audio control panel (Mod+A / click the volume module).
 // Started here so its deflisten audio state is warm before first open.
 spawn-at-startup "eww" "daemon"
+
+// awww (swww fork): animated wallpaper daemon + the Nord-gradient painter.
+// set-wallpaper (home.nix) waits for the daemon's socket, then fades it in.
+spawn-at-startup "awww-daemon"
+spawn-at-startup "set-wallpaper"
+
+// cliphist clipboard history: one watcher per MIME class feeds the store that
+// Mod+Shift+C reads back. wl-paste/cliphist are on PATH via home.packages.
+spawn-sh-at-startup "wl-paste --type text --watch cliphist store"
+spawn-sh-at-startup "wl-paste --type image --watch cliphist store"
+
+// wlsunset: blue-light filter on a day/night curve for Los Angeles
+// (34.05N, 118.24W), warming to 4000K at night, 6500K by day. Uses the
+// wlr-gamma-control protocol that niri implements.
+spawn-at-startup "wlsunset" "-l" "34.05" "-L" "-118.24" "-t" "4000" "-T" "6500"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
@@ -361,9 +377,10 @@ window-rule {
     // block-out-from "screencast"
 }
 
-// Example: enable rounded corners for all windows.
-// (This example rule is commented out with a "/-" in front.)
-/-window-rule {
+// Rounded corners for all windows — 12px to match the radius used across
+// waybar/fuzzel/mako. clip-to-geometry clips window content to the rounded
+// rect so the shadow (enabled above) draws cleanly around the corners.
+window-rule {
     geometry-corner-radius 12
     clip-to-geometry true
 }
@@ -388,6 +405,14 @@ binds {
     Mod+D hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
     Mod+Space hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
     Mod+A hotkey-overlay-title="Audio control panel" { spawn "eww" "open" "--toggle" "audio-panel"; }
+
+    // Clipboard history picker (fuzzel dmenu over cliphist).
+    Mod+Shift+C hotkey-overlay-title="Clipboard history" { spawn "clipboard-history"; }
+
+    // Region screenshot into swappy for annotation. slurp draws a Nord-tinted
+    // selector; grim pipes the raw region to swappy on stdin. Print/Ctrl+Print/
+    // Alt+Print below still use niri's own built-in screenshot UI.
+    Mod+Shift+S hotkey-overlay-title="Screenshot region → swappy" { spawn-sh "grim -g \"$(slurp -b '#2E3440cc' -c '#88C0D0ff' -s '#88C0D033' -w 2)\" - | swappy -f -"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.
@@ -559,7 +584,7 @@ binds {
     // Mod+Ctrl+1 { move-window-to-workspace 1; }
 
     // Switches focus between the current and the previous workspace.
-    // Mod+Tab { focus-workspace-previous; }
+    Mod+Tab { focus-workspace-previous; }
 
     // The following binds move the focused window in and out of a column.
     // If the window is alone, they will consume it into the nearby column to the side.
@@ -644,8 +669,10 @@ binds {
     // which ensures niri always processes them, even when an inhibitor is active.
     Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
 
-    // The quit action will show a confirmation dialog to avoid accidental exits.
-    Mod+Shift+E { quit; }
+    // Mod+Shift+E opens the fuzzel power menu (log out / suspend / reboot /
+    // shut down). Ctrl+Alt+Delete stays as the raw quit-with-confirmation
+    // escape hatch in case fuzzel or the menu ever misbehaves.
+    Mod+Shift+E hotkey-overlay-title="Power menu" { spawn "power-menu"; }
     Ctrl+Alt+Delete { quit; }
 
     // Powers off the monitors. To turn them back on, do any input like
