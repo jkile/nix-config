@@ -415,6 +415,12 @@ binds {
     // Alt+Print below still use niri's own built-in screenshot UI.
     Mod+Shift+S hotkey-overlay-title="Screenshot region → swappy" { spawn-sh "grim -g \"$(slurp -b '#2E3440cc' -c '#88C0D0ff' -s '#88C0D033' -w 2)\" - | swappy -f -"; }
 
+    // Web shortcuts launcher (fuzzel bookmarks → Firefox profiles).
+    Mod+G hotkey-overlay-title="Web shortcuts" { spawn "web-shortcuts"; }
+
+    // Quick web search — type a query, opens DuckDuckGo results in Firefox.
+    Mod+S hotkey-overlay-title="Web search" { spawn "web-search"; }
+
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.
     // For example, this is a standard bind to toggle the screen reader (orca).

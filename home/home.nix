@@ -224,6 +224,83 @@ let
       esac
     '';
   };
+
+  # ---- Firefox profile settings (shared across profiles) ----
+  # Native vertical tabs + the revamped sidebar (Firefox 136+), the about:config
+  # warning off, strict tracking protection, and telemetry disabled. Applied to
+  # every profile in programs.firefox below.
+  firefoxSettings = {
+    "sidebar.verticalTabs" = true;
+    "sidebar.revamp" = true;
+    "browser.aboutConfig.showWarning" = false;
+    "browser.contentblocking.category" = "strict";
+    "datareporting.healthreport.uploadEnabled" = false;
+    "toolkit.telemetry.enabled" = false;
+    "browser.newtabpage.activity-stream.feeds.telemetry" = false;
+    "browser.newtabpage.activity-stream.telemetry" = false;
+  };
+
+  # Web shortcuts launcher (Mod+G / the waybar 󰖟 button). A fuzzel dmenu of
+  # bookmarks that each open in a chosen Firefox profile — the OS-level stand-in
+  # for Arc/Zen's command bar + spaces. Edit the `entries` list to taste; the
+  # profile field must match a programs.firefox.profiles.<name> below. Firefox
+  # is intentionally NOT pinned in runtimeInputs so this calls the session's
+  # policy-wrapped firefox (from programs.firefox), not a bare unwrapped copy.
+  webShortcuts = pkgs.writeShellApplication {
+    name = "web-shortcuts";
+    runtimeInputs = [ pkgs.fuzzel ];
+    text = ''
+      # "Label|URL|profile" — profile is personal or work (see home.nix).
+      entries=(
+        "󰊤  GitHub|https://github.com|work"
+        "󰖟  Overview|https://overview.app|work"
+        "󰖟  PostHog|https://us.posthog.com|work"
+        "󰇮  Proton Mail|https://mail.proton.me|personal"
+        "󰃭  Proton Calendar|https://calendar.proton.me|personal"
+        "󰗃  YouTube|https://youtube.com|personal"
+      )
+
+      labels=()
+      for e in "''${entries[@]}"; do labels+=("''${e%%|*}"); done
+
+      chosen=$(printf '%s\n' "''${labels[@]}" \
+        | fuzzel --dmenu --prompt "󰖟  " --width 40 --lines 8) || exit 0
+      [ -n "$chosen" ] || exit 0
+
+      for e in "''${entries[@]}"; do
+        if [ "''${e%%|*}" = "$chosen" ]; then
+          rest=''${e#*|}
+          firefox -P "''${rest##*|}" "''${rest%%|*}" &
+          exit 0
+        fi
+      done
+    '';
+  };
+
+  # Quick web search (Mod+S). A prompt-only fuzzel box (--lines 0, empty stdin):
+  # type a query and it opens DuckDuckGo results in Firefox; paste a full URL and
+  # it opens that directly. jq @uri URL-encodes the query so spaces/&/# are safe.
+  webSearch = pkgs.writeShellApplication {
+    name = "web-search";
+    runtimeInputs = [
+      pkgs.fuzzel
+      pkgs.jq
+    ];
+    text = ''
+      query=$(fuzzel --dmenu --prompt "󰍉  " --width 40 --lines 0 </dev/null) || exit 0
+      [ -n "$query" ] || exit 0
+      case "$query" in
+        http://* | https://*)
+          url="$query"
+          ;;
+        *)
+          q=$(printf '%s' "$query" | jq -sRr @uri)
+          url="https://duckduckgo.com/?q=$q"
+          ;;
+      esac
+      firefox "$url" &
+    '';
+  };
 in
 {
   imports = [ inputs.zen-browser.homeModules.beta ];
@@ -266,6 +343,8 @@ in
     grim # screenshot capture backend for the swappy region grab
     slurp # Nord-tinted region selector for the swappy grab
     swappy # screenshot annotation (Mod+Shift+S)
+    webShortcuts # Mod+G / waybar 󰖟 — fuzzel web bookmarks → Firefox profiles
+    webSearch # Mod+S — fuzzel prompt → DuckDuckGo search in Firefox
 
     sops
     age
@@ -357,6 +436,7 @@ in
       margin-right = 10;
 
       modules-left = [
+        "custom/webshortcuts"
         "niri/workspaces"
         "niri/window"
       ];
@@ -382,6 +462,19 @@ in
         format = "{title}";
         max-length = 55;
         tooltip = false;
+      };
+
+      # Web shortcuts launcher button — static globe icon; click (or Mod+G)
+      # opens the fuzzel bookmarks menu. `interval = "once"` renders it a single
+      # time since the icon never changes.
+      "custom/webshortcuts" = {
+        format = "{}";
+        exec = "${pkgs.writeShellScript "waybar-webshortcuts" ''
+          printf '{"text":"󰖟","tooltip":"Web shortcuts — Mod+G"}\n'
+        ''}";
+        return-type = "json";
+        interval = "once";
+        on-click = "web-shortcuts";
       };
 
       clock = {
@@ -527,7 +620,7 @@ in
         color: #${nord.nord4};
       }
 
-      #workspaces, #window, #clock, #custom-media, #cpu, #memory,
+      #custom-webshortcuts, #workspaces, #window, #clock, #custom-media, #cpu, #memory,
       #custom-temp, #custom-nightlight, #custom-weather, #pulseaudio, #network,
       #custom-protonvpn, #tray {
         padding: 0 10px;
@@ -548,6 +641,10 @@ in
       #workspaces button:hover {
         background-color: rgba(76, 86, 106, 0.6);
       }
+
+      /* Web shortcuts launcher button — frost globe, subtle hover. */
+      #custom-webshortcuts { color: #${nord.nord8}; font-size: 15px; }
+      #custom-webshortcuts:hover { background-color: rgba(76, 86, 106, 0.6); }
 
       #clock { color: #${nord.nord8}; font-weight: bold; }
       #pulseaudio { color: #${nord.nord7}; }
@@ -686,6 +783,39 @@ in
 
   programs.zen-browser = {
     enable = true;
+  };
+
+  # Firefox — a declarative, OS-managed alternative to Arc/Zen. Two isolated
+  # profiles (personal default + work); native vertical tabs and the telemetry/
+  # privacy prefs come from firefoxSettings. Zen stays installed above as a
+  # fallback. Launch a specific profile from the web-shortcuts launcher,
+  # `firefox -P work`, or about:profiles.
+  programs.firefox = {
+    enable = true;
+    profiles = {
+      personal = {
+        id = 0;
+        isDefault = true;
+        settings = firefoxSettings;
+      };
+      work = {
+        id = 1;
+        settings = firefoxSettings;
+      };
+    };
+    # Enterprise policies apply to every profile: kill telemetry/Pocket and
+    # force-install uBlock Origin straight from AMO (no NUR or extra flake input
+    # needed). Add more add-ons by their extension ID + AMO latest-xpi URL.
+    policies = {
+      DisableTelemetry = true;
+      DisablePocket = true;
+      ExtensionSettings = {
+        "uBlock0@raymondhill.net" = {
+          installation_mode = "force_installed";
+          install_url = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
+        };
+      };
+    };
   };
 
   programs.git = {
