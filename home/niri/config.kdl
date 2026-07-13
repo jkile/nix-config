@@ -280,22 +280,11 @@ layout {
 // which may be more convenient to use.
 // See the binds section below for more spawn examples.
 
-// Point X11 clients at the xwayland-satellite server started below.
-environment {
-    DISPLAY ":12"
-}
-
 // waybar: status bar. mako: notification daemon. Both are niri-session
 // only (COSMIC provides its own), so they live here rather than as
 // always-on systemd user services.
 spawn-at-startup "waybar"
 spawn-at-startup "mako"
-
-// XWayland via xwayland-satellite on display :12. niri has no built-in X server,
-// so X11 apps (notably Discord, which hangs under Wayland-native rendering) need
-// this. DISPLAY is exported below so X11 clients find it. See the discord-x11
-// wrapper in home.nix.
-spawn-at-startup "xwayland-satellite" ":12"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"

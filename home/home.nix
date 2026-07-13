@@ -30,26 +30,22 @@ let
     nord15 = "B48EAD"; # purple
   };
 
-  # Discord hangs under Wayland-native rendering on this machine (the renderer
-  # pegs a core on the loading screen, even with --disable-gpu). Running it under
-  # XWayland (via xwayland-satellite on :12, spawned by niri) works. This wrapper
-  # forces just Discord onto X11 — NIXOS_OZONE_WL stays global so other Electron
-  # apps keep sharp Wayland-native rendering.
-  #
-  # XWayland can't do per-monitor scaling, so Discord renders at native 1x. On
-  # the 2x Apple display use Discord's own zoom (Ctrl+= / Ctrl+-, which persists)
-  # to size it up; leave it at 100% on the 1x ultrawide.
-  discord-x11 = pkgs.symlinkJoin {
-    name = "discord-x11";
+  # Discord (Electron) hangs on the loading screen under niri because of the
+  # wp-fractional-scale protocol — the renderer pegs a core forever. Disabling
+  # WaylandFractionalScaleV1 fixes it, and since both our outputs are integer-
+  # scaled (2x + 1x) we lose nothing. NIXOS_OZONE_WL (global) keeps it on Wayland.
+  # WebRTCPipeWireCapturer routes screen capture through the xdg-desktop-portal
+  # instead of Electron's broken-on-Wayland desktopCapturer path.
+  discord-wayland = pkgs.symlinkJoin {
+    name = "discord-wayland";
     paths = [ pkgs.discord ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
       for b in Discord discord; do
         rm -f "$out/bin/$b"
         makeWrapper ${pkgs.discord}/bin/Discord "$out/bin/$b" \
-          --unset NIXOS_OZONE_WL \
-          --set DISPLAY :12 \
-          --add-flags "--ozone-platform=x11"
+          --add-flags "--enable-features=WebRTCPipeWireCapturer" \
+          --add-flags "--disable-features=WaylandFractionalScaleV1"
       done
     '';
   };
@@ -62,8 +58,7 @@ in
   home.stateVersion = "26.05";
 
   home.packages = with pkgs; [
-    discord-x11 # Discord wrapped to run under XWayland (see let binding above)
-    xwayland-satellite # provides the :12 X server that discord-x11 targets
+    discord-wayland # Discord w/ fractional-scale + PipeWire flags (see let binding)
     ripgrep
     fd
     procs
