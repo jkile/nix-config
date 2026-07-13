@@ -303,10 +303,11 @@ spawn-at-startup "set-wallpaper"
 spawn-sh-at-startup "wl-paste --type text --watch cliphist store"
 spawn-sh-at-startup "wl-paste --type image --watch cliphist store"
 
-// wlsunset: blue-light filter on a day/night curve for Los Angeles
-// (34.05N, 118.24W), warming to 4000K at night, 6500K by day. Uses the
-// wlr-gamma-control protocol that niri implements.
-spawn-at-startup "wlsunset" "-l" "34.05" "-L" "-118.24" "-t" "4000" "-T" "6500"
+// Blue-light filter — started via the `nightlight` script (home.nix), which is
+// the single source of truth for its settings and also backs the waybar
+// custom/nightlight widget (click the bar icon to toggle). Uses wlsunset over
+// the wlr-gamma-control protocol that niri implements.
+spawn-at-startup "nightlight" "start"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"

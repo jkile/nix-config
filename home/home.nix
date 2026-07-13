@@ -169,6 +169,61 @@ let
       esac
     '';
   };
+
+  # ---- Blue-light filter (wlsunset) manager ----
+  # Single source of truth for the night-light settings: niri starts it
+  # (`nightlight start`) and the waybar custom/nightlight widget toggles/queries
+  # it (`nightlight toggle` / `status`), both through this one script. Edit the
+  # four settings below to retune; `wlsunset -h` lists the rest. setsid detaches
+  # the daemon so it survives this short-lived invocation; toggle pokes waybar
+  # (SIGRTMIN+8 = the module's signal=8) so the icon flips the instant you click.
+  # NB: wlsunset has no query API, so status can only report running/stopped —
+  # the temps shown in the tooltip are the configured values, not a live read.
+  nightlight = pkgs.writeShellApplication {
+    name = "nightlight";
+    runtimeInputs = [
+      pkgs.wlsunset
+      pkgs.jq
+      pkgs.procps # pgrep/pkill
+      pkgs.util-linux # setsid
+    ];
+    text = ''
+      LAT=34.05
+      LONG=-118.24
+      NIGHT=4000 # night (low) temp in K — lower is warmer/more orange
+      DAY=6500 # day (high) temp in K — 6500 is neutral daylight
+
+      start_daemon() {
+        setsid wlsunset -l "$LAT" -L "$LONG" -t "$NIGHT" -T "$DAY" >/dev/null 2>&1 &
+      }
+
+      case "''${1:-status}" in
+        start)
+          pgrep -x wlsunset >/dev/null 2>&1 || start_daemon
+          ;;
+        stop)
+          pkill -x wlsunset || true
+          ;;
+        toggle)
+          if pgrep -x wlsunset >/dev/null 2>&1; then
+            pkill -x wlsunset || true
+          else
+            start_daemon
+          fi
+          pkill -RTMIN+8 waybar || true
+          ;;
+        status)
+          if pgrep -x wlsunset >/dev/null 2>&1; then
+            jq -cn --arg tip "Blue-light filter: on"$'\n'"Night ''${NIGHT}K · Day ''${DAY}K"$'\n'"Click to disable" \
+              '{text:"󰖔", class:"on", tooltip:$tip}'
+          else
+            jq -cn --arg tip "Blue-light filter: off"$'\n'"Click to enable (night ''${NIGHT}K · day ''${DAY}K)" \
+              '{text:"󰖙", class:"off", tooltip:$tip}'
+          fi
+          ;;
+      esac
+    '';
+  };
 in
 {
   imports = [ inputs.zen-browser.homeModules.beta ];
@@ -206,7 +261,8 @@ in
     cliphist # clipboard history store (fed by the wl-paste --watch listeners)
     clipboardHistory # Mod+Shift+C — fuzzel clipboard-history picker
     powerMenu # Mod+Shift+E — fuzzel session menu (logout/suspend/reboot/off)
-    wlsunset # blue-light filter on a day/night curve (LA coords, wlr-gamma)
+    wlsunset # blue-light filter engine (driven by the nightlight script below)
+    nightlight # wlsunset manager + backs the waybar custom/nightlight widget
     grim # screenshot capture backend for the swappy region grab
     slurp # Nord-tinted region selector for the swappy grab
     swappy # screenshot annotation (Mod+Shift+S)
@@ -311,6 +367,7 @@ in
         "cpu"
         "memory"
         "custom/temp"
+        "custom/nightlight"
         "pulseaudio"
         "network"
         "custom/protonvpn"
@@ -391,6 +448,20 @@ in
         format = "{}";
       };
 
+      # Blue-light filter, via the `nightlight` script (home.nix is the single
+      # source of truth for its settings). Left-click toggles wlsunset on/off;
+      # the toggle signals waybar (signal 8 → SIGRTMIN+8) so the icon updates
+      # instantly, with the 30s interval as a fallback. wlsunset can't be
+      # queried, so this only reflects running/stopped, not the live temp.
+      "custom/nightlight" = {
+        exec = "nightlight status";
+        return-type = "json";
+        interval = 30;
+        signal = 8;
+        format = "{}";
+        on-click = "nightlight toggle";
+      };
+
       # Left-click toggles the eww audio panel; middle-click opens pwvucontrol
       # for deep per-channel work; right-click mutes; scroll nudges volume via
       # swayosd-client so the OSD popup shows. Tooltip names the active sink.
@@ -457,7 +528,7 @@ in
       }
 
       #workspaces, #window, #clock, #custom-media, #cpu, #memory,
-      #custom-temp, #custom-weather, #pulseaudio, #network,
+      #custom-temp, #custom-nightlight, #custom-weather, #pulseaudio, #network,
       #custom-protonvpn, #tray {
         padding: 0 10px;
         margin: 4px 2px;
@@ -499,6 +570,10 @@ in
         color: #${nord.nord11};
         animation: blink 1s steps(2, start) infinite;
       }
+
+      /* Blue-light filter — warm yellow when active, dim when off. */
+      #custom-nightlight.on { color: #${nord.nord13}; }
+      #custom-nightlight.off { color: #${nord.nord3}; }
 
       /* ProtonVPN — green when up, dim when down. */
       #custom-protonvpn.connected { color: #${nord.nord14}; }
