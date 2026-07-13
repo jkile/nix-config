@@ -1,0 +1,74 @@
+;; Audio control panel — a niri drop-down HUD driven by pactl state.
+;; State arrives as JSON from `eww-audio-state` (see audio-state.sh); actions
+;; go back out through `eww-audio-ctl` (audio-ctl.sh). Both are on PATH.
+
+(deflisten audio
+  :initial `{"sinks":[],"sources":[],"apps":[],"defsink":"","defsource":"","sinkvol":0,"sourcevol":0,"sinkmute":false,"sourcemute":false}`
+  "eww-audio-state")
+
+;; A single selectable device row (used for both outputs and inputs).
+(defwidget devrow [name desc vol active cmd]
+  (button :class {active ? "dev active" : "dev"}
+          :onclick "eww-audio-ctl ${cmd} '${name}'"
+    (box :space-evenly false :spacing 8
+      (label :class "dev-dot" :text {active ? "" : ""})
+      (label :class "dev-name" :halign "start" :hexpand true
+             :limit-width 32 :text desc)
+      (label :class "dev-vol" :text "${vol}%"))))
+
+(defwidget section [title]
+  (label :class "section" :halign "start" :text title))
+
+(defwidget audio-content []
+  (box :class "audio-panel" :orientation "vertical" :space-evenly false :spacing 2
+    ;; ---- Output ----
+    (section :title "Output")
+    (box :class "slider-row" :space-evenly false :spacing 8
+      (button :class "mute-btn" :onclick "eww-audio-ctl toggle-sink-mute"
+        (label :text {audio.sinkmute ? "" : ""}))
+      (scale :class "slider" :hexpand true :min 0 :max 101
+             :value {audio.sinkvol}
+             :onchange "eww-audio-ctl sink-vol {}")
+      (label :class "pct" :text "${audio.sinkvol}%"))
+    (box :class "devlist" :orientation "vertical" :space-evenly false
+      (for s in {audio.sinks}
+        (devrow :name {s.name} :desc {s.desc} :vol {s.vol}
+                :active {s.name == audio.defsink} :cmd "set-sink")))
+
+    ;; ---- Input ----
+    (section :title "Input")
+    (box :class "slider-row" :space-evenly false :spacing 8
+      (button :class "mute-btn" :onclick "eww-audio-ctl toggle-source-mute"
+        (label :text {audio.sourcemute ? "" : ""}))
+      (scale :class "slider" :hexpand true :min 0 :max 101
+             :value {audio.sourcevol}
+             :onchange "eww-audio-ctl source-vol {}")
+      (label :class "pct" :text "${audio.sourcevol}%"))
+    (box :class "devlist" :orientation "vertical" :space-evenly false
+      (for s in {audio.sources}
+        (devrow :name {s.name} :desc {s.desc} :vol {s.vol}
+                :active {s.name == audio.defsource} :cmd "set-source")))
+
+    ;; ---- Per-application ----
+    (section :title "Applications")
+    (box :class "applist" :orientation "vertical" :space-evenly false
+      (label :class "empty" :visible {arraylength(audio.apps) == 0}
+             :halign "start" :text "Nothing playing")
+      (for a in {audio.apps}
+        (box :class "slider-row" :space-evenly false :spacing 8
+          (label :class "app-name" :halign "start" :limit-width 22 :text {a.name})
+          (scale :class "slider app-slider" :hexpand true :min 0 :max 101
+                 :value {a.vol}
+                 :onchange "eww-audio-ctl app-vol ${a.index} {}")
+          (label :class "pct" :text "${a.vol}%"))))))
+
+(defwindow audio-panel
+  :monitor 0
+  ;; y clears the floating bar (margin-top 6 + height 34) so the panel drops
+  ;; just beneath it, right-aligned under the volume module.
+  :geometry (geometry :x "10px" :y "46px" :anchor "top right" :width "380px")
+  :stacking "overlay"
+  :windowtype "normal"
+  :exclusive false
+  :focusable false
+  (audio-content))

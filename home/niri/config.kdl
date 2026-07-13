@@ -280,11 +280,17 @@ layout {
 // which may be more convenient to use.
 // See the binds section below for more spawn examples.
 
-// waybar: status bar. mako: notification daemon. Both are niri-session
-// only (COSMIC provides its own), so they live here rather than as
-// always-on systemd user services.
+// waybar: status bar. mako: notification daemon. swayosd-server: the
+// daemon behind the volume/mute on-screen popup. All niri-session only
+// (COSMIC provides its own), so they live here rather than as always-on
+// systemd user services. swayosd gets an explicit --style so it always
+// picks up the Nord stylesheet regardless of XDG lookup order.
 spawn-at-startup "waybar"
 spawn-at-startup "mako"
+spawn-sh-at-startup "swayosd-server --style $HOME/.config/swayosd/style.css"
+// eww daemon for the audio control panel (Mod+A / click the volume module).
+// Started here so its deflisten audio state is warm before first open.
+spawn-at-startup "eww" "daemon"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
@@ -381,27 +387,27 @@ binds {
     Mod+T hotkey-overlay-title="Open a Terminal: ghostty" { spawn "ghostty"; }
     Mod+D hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
     Mod+Space hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
+    Mod+A hotkey-overlay-title="Audio control panel" { spawn "eww" "open" "--toggle" "audio-panel"; }
 
     // Use spawn-sh to run a shell command. Do this if you need pipes, multiple commands, etc.
     // Note: the entire command goes as a single argument. It's passed verbatim to `sh -c`.
     // For example, this is a standard bind to toggle the screen reader (orca).
     Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
 
-    // Example volume keys mappings for PipeWire & WirePlumber.
-    // The allow-when-locked=true property makes them work even when the session is locked.
-    // Using spawn-sh allows to pass multiple arguments together with the command.
-    // "-l 1.0" limits the volume to 100%.
-    XF86AudioRaiseVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+ -l 1.0"; }
-    XF86AudioLowerVolume allow-when-locked=true { spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-"; }
-    XF86AudioMute        allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"; }
-    XF86AudioMicMute     allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"; }
+    // Volume/mute via swayosd-client, so each press shows the Nord OSD popup
+    // (swayosd-server, spawned above, does the actual wpctl work). --max-volume
+    // caps the sink at 100%. allow-when-locked keeps them working when locked.
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "swayosd-client" "--output-volume" "raise" "--max-volume" "100"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "swayosd-client" "--output-volume" "lower"; }
+    XF86AudioMute        allow-when-locked=true { spawn "swayosd-client" "--output-volume" "mute-toggle"; }
+    XF86AudioMicMute     allow-when-locked=true { spawn "swayosd-client" "--input-volume" "mute-toggle"; }
 
-    // Example media keys mapping using playerctl.
-    // This will work with any MPRIS-enabled media player.
-    XF86AudioPlay        allow-when-locked=true { spawn-sh "playerctl play-pause"; }
-    XF86AudioStop        allow-when-locked=true { spawn-sh "playerctl stop"; }
-    XF86AudioPrev        allow-when-locked=true { spawn-sh "playerctl previous"; }
-    XF86AudioNext        allow-when-locked=true { spawn-sh "playerctl next"; }
+    // Media keys via swayosd-client --playerctl: same MPRIS control as before,
+    // now with an OSD popup showing the track/action.
+    XF86AudioPlay        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "play-pause"; }
+    XF86AudioStop        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "stop"; }
+    XF86AudioPrev        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "prev"; }
+    XF86AudioNext        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "next"; }
 
     // Example brightness key mappings for brightnessctl.
     // You can use regular spawn with multiple arguments too (to avoid going through "sh"),

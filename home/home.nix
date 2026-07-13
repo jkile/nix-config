@@ -49,6 +49,53 @@ let
       done
     '';
   };
+
+  # Backing scripts for the eww audio panel (see home/eww/). Shipped as bins so
+  # eww's yuck can call them by bare name, with their deps pinned on PATH via
+  # runtimeInputs. writeShellApplication also shellchecks them at build time.
+  # errexit is off for the state script so a transient pactl hiccup can't kill
+  # the long-lived `deflisten` listener.
+  ewwAudioState = pkgs.writeShellApplication {
+    name = "eww-audio-state";
+    runtimeInputs = [
+      pkgs.pulseaudio
+      pkgs.jq
+    ];
+    bashOptions = [ "pipefail" ];
+    text = builtins.readFile ./eww/audio-state.sh;
+  };
+  ewwAudioCtl = pkgs.writeShellApplication {
+    name = "eww-audio-ctl";
+    runtimeInputs = [ pkgs.pulseaudio ];
+    text = builtins.readFile ./eww/audio-ctl.sh;
+  };
+
+  # Now-playing for the waybar custom/media module (replaces the crash-prone
+  # native mpris module). Emits waybar JSON; jq handles escaping of arbitrary
+  # track titles. Short enough to inline rather than carry a separate file.
+  waybarMedia = pkgs.writeShellApplication {
+    name = "waybar-media";
+    runtimeInputs = [
+      pkgs.playerctl
+      pkgs.jq
+    ];
+    text = ''
+      status=$(playerctl status 2>/dev/null || true)
+      case "$status" in
+        Playing) icon="" ;;
+        Paused)  icon="" ;;
+        *) printf '%s\n' '{"text":""}'; exit 0 ;;
+      esac
+      title=$(playerctl metadata title 2>/dev/null || true)
+      artist=$(playerctl metadata artist 2>/dev/null || true)
+      jq -cn --arg icon "$icon" --arg title "$title" --arg artist "$artist" --arg status "$status" '
+        {
+          text:    ($icon + " " + $title + (if $artist != "" then " — " + $artist else "" end)),
+          tooltip: ($title + (if $artist != "" then "\n" + $artist else "" end) + "\n" + $status),
+          class:   ($status | ascii_downcase)
+        }'
+    '';
+  };
 in
 {
   imports = [ inputs.zen-browser.homeModules.beta ];
@@ -69,14 +116,73 @@ in
     # below (theme/iconTheme/cursorTheme .package), so they're not listed here.
     claude-code
     qpwgraph # PipeWire patchbay — route the ULN-8's 12 discrete channels
-    pavucontrol # quick check of device profile / per-channel levels
+    pwvucontrol # full GTK4 mixer — middle-click volume module for per-channel detail
+    swayosd # on-screen volume/mute popup (server spawned by niri; see config.kdl)
+
+    # eww audio panel (Mod+A / click the volume module). eww itself comes from
+    # programs.eww below; these are the pactl-driven helper scripts it calls.
+    ewwAudioState
+    ewwAudioCtl
+    waybarMedia # now-playing script for the waybar custom/media module
 
     sops
     age
     ssh-to-age
+
+    proton-vpn # ProtonVPN app; provides `protonvpn-app` (waybar VPN module click)
   ];
 
   xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;
+
+  # SwayOSD volume/mute popup — Nord styling to match waybar/mako/fuzzel:
+  # the same floating, rounded, translucent dark surface with a frost-blue
+  # progress fill. swayosd-server is pointed at this file via --style in the
+  # niri spawn-at-startup line.
+  xdg.configFile."swayosd/style.css".text = ''
+    window {
+      background-color: rgba(46, 52, 64, 0.92);
+      border: 1px solid rgba(76, 86, 106, 0.6);
+      border-radius: 16px;
+      padding: 12px 16px;
+    }
+
+    #container { margin: 12px; }
+
+    image, label {
+      color: #${nord.nord4};
+    }
+
+    progressbar {
+      min-height: 8px;
+      border-radius: 8px;
+      background: transparent;
+    }
+    trough {
+      min-height: 8px;
+      border-radius: 8px;
+      background-color: rgba(76, 86, 106, 0.5);
+    }
+    progress {
+      min-height: 8px;
+      border-radius: 8px;
+      background-color: #${nord.nord8};
+    }
+
+    /* Muted state — dim the fill and icon to nord3. */
+    progressbar:disabled progress { background-color: #${nord.nord3}; }
+    image:disabled, label:disabled { color: #${nord.nord3}; }
+  '';
+
+  # eww — the audio control panel HUD (Mod+A, or click the waybar volume
+  # module). Config lives as readable files in home/eww/; the module writes
+  # them to ~/.config/eww/. The daemon is started by niri spawn-at-startup so
+  # the deflisten state is warm before the panel is first opened.
+  programs.eww = {
+    enable = true;
+    yuckConfig = builtins.readFile ./eww/eww.yuck;
+    scssConfig = builtins.readFile ./eww/eww.scss;
+  };
+
   programs.home-manager.enable = true;
 
   # waybar — styled to echo COSMIC's panel: a floating, rounded, translucent
@@ -94,19 +200,102 @@ in
       margin-left = 10;
       margin-right = 10;
 
-      modules-left = [ "niri/workspaces" ];
+      modules-left = [
+        "niri/workspaces"
+        "niri/window"
+      ];
       modules-center = [ "clock" ];
       modules-right = [
+        "custom/media"
+        "custom/weather"
+        "cpu"
+        "memory"
+        "custom/temp"
         "pulseaudio"
         "network"
+        "custom/protonvpn"
         "tray"
       ];
 
       "niri/workspaces".format = "{icon}";
+
+      # Focused-window title. Truncated so a long title can't shove the
+      # centered clock off-center; empty when nothing is focused.
+      "niri/window" = {
+        format = "{title}";
+        max-length = 55;
+        tooltip = false;
+      };
+
       clock = {
         format = "  {:%a %d %b   %H:%M}";
         tooltip-format = "<tt><small>{calendar}</small></tt>";
       };
+
+      # Now-playing. Deliberately NOT waybar's native `mpris` module — that
+      # module segfaults the whole bar in 0.15 (clicking it took waybar down).
+      # This is a plain custom module driven by playerctl via the waybar-media
+      # script: exec-and-display only, so it can never crash waybar. Click
+      # toggles play/pause, scroll skips tracks.
+      "custom/media" = {
+        format = "{}";
+        exec = "waybar-media";
+        interval = 2;
+        return-type = "json";
+        max-length = 45;
+        on-click = "playerctl play-pause";
+        on-scroll-up = "playerctl next";
+        on-scroll-down = "playerctl previous";
+      };
+
+      # Weather from wttr.in (auto-locates by IP). curl is on PATH; the sed
+      # drops the leading '+' wttr prepends to positive temps.
+      "custom/weather" = {
+        exec = "${pkgs.curl}/bin/curl -s 'wttr.in/?format=%c+%t' | sed 's/+//g'";
+        interval = 1800;
+        format = "{}";
+        tooltip = false;
+      };
+
+      cpu = {
+        format = "󰻠 {usage}%";
+        interval = 2;
+        on-click = "ghostty -e btop";
+      };
+      memory = {
+        format = "󰍛 {percentage}%";
+        interval = 5;
+        tooltip-format = "{used:0.1f}G / {total:0.1f}G used";
+        on-click = "ghostty -e btop";
+      };
+
+      # CPU temperature read by sensor *name* (k10temp), not hwmon index —
+      # the index isn't stable across reboots, and thermal_zone0 here is the
+      # wifi card, not the CPU. See the writeShellScript body for details.
+      "custom/temp" = {
+        exec = "${
+          pkgs.writeShellScript "waybar-temp" ''
+            for h in /sys/class/hwmon/hwmon*; do
+              if [ "$(cat "$h/name" 2>/dev/null)" = "k10temp" ] && [ -f "$h/temp1_input" ]; then
+                c=$(( $(cat "$h/temp1_input") / 1000 ))
+                if [ "$c" -ge 85 ]; then cls="critical"; icon="";
+                elif [ "$c" -ge 70 ]; then cls="warning"; icon="";
+                else cls="normal"; icon=""; fi
+                printf '{"text":"%s %s°C","class":"%s","tooltip":"CPU (k10temp): %s°C"}\n' "$icon" "$c" "$cls" "$c"
+                exit 0
+              fi
+            done
+            printf '{"text":"","class":"normal"}\n'
+          ''
+        }";
+        return-type = "json";
+        interval = 5;
+        format = "{}";
+      };
+
+      # Left-click toggles the eww audio panel; middle-click opens pwvucontrol
+      # for deep per-channel work; right-click mutes; scroll nudges volume via
+      # swayosd-client so the OSD popup shows. Tooltip names the active sink.
       pulseaudio = {
         format = "{icon} {volume}%";
         format-muted = "󰝟 muted";
@@ -115,7 +304,12 @@ in
           "󰖀"
           "󰕾"
         ];
-        on-click = "pavucontrol";
+        tooltip-format = "{desc} · {volume}%";
+        on-click = "eww open --toggle audio-panel";
+        on-click-middle = "pwvucontrol";
+        on-click-right = "swayosd-client --output-volume mute-toggle";
+        on-scroll-up = "swayosd-client --output-volume raise --max-volume 100";
+        on-scroll-down = "swayosd-client --output-volume lower";
       };
       network = {
         format-wifi = "󰤨 {essid}";
@@ -123,6 +317,27 @@ in
         format-disconnected = "󰤭 offline";
         tooltip-format = "{ifname} · {ipaddr}";
       };
+
+      # ProtonVPN status + quick launch. The official app manages its own
+      # WireGuard link; we detect a proton/wg interface to show connected
+      # state, and click opens the GUI. Styled green/grey via the class.
+      "custom/protonvpn" = {
+        exec = "${
+          pkgs.writeShellScript "waybar-protonvpn" ''
+            iface=$(ip -o link show 2>/dev/null | grep -oE 'proton0|pvpn[a-z0-9]*|wg[0-9]+' | head -n1)
+            if [ -n "$iface" ]; then
+              printf '{"text":"󰦝 VPN","class":"connected","tooltip":"ProtonVPN connected (%s) — click to open app"}\n' "$iface"
+            else
+              printf '{"text":"󰦞 VPN","class":"disconnected","tooltip":"ProtonVPN disconnected — click to open app"}\n'
+            fi
+          ''
+        }";
+        return-type = "json";
+        interval = 5;
+        format = "{}";
+        on-click = "protonvpn-app";
+      };
+
       tray = {
         spacing = 8;
         icon-size = 16;
@@ -145,7 +360,9 @@ in
         color: #${nord.nord4};
       }
 
-      #workspaces, #clock, #pulseaudio, #network, #tray {
+      #workspaces, #window, #clock, #custom-media, #cpu, #memory,
+      #custom-temp, #custom-weather, #pulseaudio, #network,
+      #custom-protonvpn, #tray {
         padding: 0 10px;
         margin: 4px 2px;
       }
@@ -168,6 +385,32 @@ in
       #clock { color: #${nord.nord8}; font-weight: bold; }
       #pulseaudio { color: #${nord.nord7}; }
       #network { color: #${nord.nord9}; }
+
+      /* Focused-window title — muted so it recedes behind the accents. */
+      #window { color: #${nord.nord4}; font-style: italic; }
+
+      /* Now-playing (purple), weather (frost). */
+      #custom-media { color: #${nord.nord15}; }
+      #custom-media.paused { color: #${nord.nord3}; font-style: italic; }
+      #custom-weather { color: #${nord.nord8}; }
+
+      /* System stats — green baseline; temp shifts to yellow/red by state. */
+      #cpu { color: #${nord.nord14}; }
+      #memory { color: #${nord.nord14}; }
+      #custom-temp { color: #${nord.nord14}; }
+      #custom-temp.warning { color: #${nord.nord13}; }
+      #custom-temp.critical {
+        color: #${nord.nord11};
+        animation: blink 1s steps(2, start) infinite;
+      }
+
+      /* ProtonVPN — green when up, dim when down. */
+      #custom-protonvpn.connected { color: #${nord.nord14}; }
+      #custom-protonvpn.disconnected { color: #${nord.nord3}; }
+
+      @keyframes blink {
+        to { color: #${nord.nord6}; }
+      }
     '';
   };
 

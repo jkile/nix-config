@@ -1,0 +1,87 @@
+// Audio control panel — Nord palette, matched to the waybar/mako/fuzzel look
+// (translucent rounded dark surface, frost-blue accents). GTK3 CSS (eww).
+//
+// Nord: nord0 #2E3440  nord1 #3B4252  nord3 #4C566A  nord4 #D8DEE9
+//       nord6 #ECEFF4  nord7 #8FBCBB  nord8 #88C0D0  nord9 #81A1C1
+//       nord14 (green) #A3BE8C  nord11 (red) #BF616A
+
+* {
+  font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font";
+  font-size: 13px;
+}
+
+.audio-panel {
+  background-color: rgba(46, 52, 64, 0.92);
+  border: 1px solid rgba(76, 86, 106, 0.6);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 6px;               // breathing room from the screen edge
+  color: #D8DEE9;
+}
+
+.section {
+  color: #81A1C1;
+  font-weight: bold;
+  font-size: 11px;
+  margin: 12px 2px 6px 2px;
+}
+.section:first-child { margin-top: 2px; }
+
+.slider-row {
+  margin: 3px 2px;
+}
+
+.mute-btn {
+  background-color: transparent;
+  color: #8FBCBB;
+  font-size: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+}
+.mute-btn:hover { background-color: rgba(76, 86, 106, 0.5); }
+
+.pct {
+  color: #4C566A;
+  min-width: 42px;
+}
+
+// GTK3 scale anatomy: scale > trough > highlight, plus the `slider` knob.
+scale trough {
+  min-height: 6px;
+  border-radius: 6px;
+  background-color: rgba(76, 86, 106, 0.5);
+}
+scale highlight {
+  border-radius: 6px;
+  background-color: #88C0D0;
+}
+scale slider {
+  background-color: #ECEFF4;
+  border-radius: 50%;
+  min-width: 13px;
+  min-height: 13px;
+  margin: -5px;              // overlap the thin trough
+}
+.app-slider highlight { background-color: #8FBCBB; }
+
+// Selectable device rows.
+.dev {
+  background-color: transparent;
+  border-radius: 8px;
+  padding: 5px 8px;
+  margin: 1px 0;
+  color: #D8DEE9;
+}
+.dev:hover { background-color: rgba(76, 86, 106, 0.4); }
+.dev.active { color: #ECEFF4; font-weight: bold; }
+
+.dev-dot { color: #4C566A; font-size: 10px; }
+.dev.active .dev-dot { color: #A3BE8C; }
+.dev-vol { color: #4C566A; }
+
+.app-name { color: #D8DEE9; }
+.empty {
+  color: #4C566A;
+  font-style: italic;
+  padding: 4px 2px;
+}
