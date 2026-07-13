@@ -1038,6 +1038,10 @@ in
       ];
       font-size = 12;
       cursor-style = "block";
+      # No titlebar/headerbar — niri draws the window edge (see prefer-no-csd in
+      # config.kdl), so the terminal is just the rounded, shadowed content rect.
+      window-decoration = false;
+      gtk-titlebar = false;
       shell-integration = "zsh";
       shell-integration-features = "cursor,sudo,title";
       window-padding-x = 8;

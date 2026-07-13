@@ -317,12 +317,14 @@ hotkey-overlay {
     // skip-at-startup
 }
 
-// Uncomment this line to ask the clients to omit their client-side decorations if possible.
-// If the client will specifically ask for CSD, the request will be honored.
-// Additionally, clients will be informed that they are tiled, removing some client-side rounded corners.
-// This option will also fix border/focus ring drawing behind some semitransparent windows.
-// After enabling or disabling this, you need to restart the apps for this to take effect.
-// prefer-no-csd
+// Ask clients to omit their client-side decorations (titlebars) so niri draws
+// its own clean edge instead — the focus-ring + rounded corners + shadow below.
+// This unifies window chrome with the rest of the Nord aesthetic (waybar/fuzzel/
+// mako). Apps that put controls in a headerbar (GTK/libadwaita: nautilus,
+// pwvucontrol) keep a slim header since that's where their buttons live; Qt apps
+// (qpwgraph) and terminals drop it fully. Electron apps (Discord) draw their own
+// in-app chrome and are unaffected. Restart apps after toggling this.
+prefer-no-csd
 
 // You can change the path where screenshots are saved.
 // A ~ at the front will be expanded to the home directory.
@@ -340,7 +342,50 @@ animations {
     // off
 
     // Slow down all animations by this factor. Values below 1 speed them up instead.
-    // slowdown 3.0
+    // Left off deliberately — the motion is meant to stay snappy.
+    // slowdown 1.5
+
+    // Snappy-but-fluid preset. The springs keep niri's fast default stiffness
+    // but pin damping-ratio at 1.0 so they settle crisply with no overshoot/
+    // wobble; window open/close fade+scale on a short ease-out-expo instead of
+    // hard-cutting. Tune stiffness up for snappier, down for looser.
+
+    // Horizontal column scroll — the signature niri glide.
+    horizontal-view-movement {
+        spring damping-ratio=1.0 stiffness=900 epsilon=0.0001
+    }
+
+    // Vertical slide when switching workspaces.
+    workspace-switch {
+        spring damping-ratio=1.0 stiffness=1000 epsilon=0.0001
+    }
+
+    // A window springing to a new position (moved, or nudged by a neighbor).
+    window-movement {
+        spring damping-ratio=1.0 stiffness=900 epsilon=0.0001
+    }
+
+    // Width/height changes (Mod+R presets, resize).
+    window-resize {
+        spring damping-ratio=1.0 stiffness=900 epsilon=0.0001
+    }
+
+    // New windows fade + scale in quickly rather than popping.
+    window-open {
+        duration-ms 150
+        curve "ease-out-expo"
+    }
+
+    // Closing windows fade + scale out, a touch faster than they open.
+    window-close {
+        duration-ms 130
+        curve "ease-out-quad"
+    }
+
+    // Zoom to/from the workspace overview grid.
+    overview-open-close {
+        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
+    }
 }
 
 // Window rules let you adjust behavior for individual windows.
