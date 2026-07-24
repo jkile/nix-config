@@ -53,15 +53,14 @@
     protontricks
   ];
 
-  # Encrypted swap partition (the root LUKS device is declared in
-  # hardware-configuration.nix; the allowDiscards line below merges into it).
-  # allowDiscards on both so TRIM (services.fstrim, enabled in common) reaches
-  # the SSD. Tradeoff: discard reveals which blocks are unused to disk access.
-  boot.initrd.luks.devices."luks-8c1d225b-e2fc-4565-a496-96a750c2fcb6" = {
-    device = "/dev/disk/by-uuid/8c1d225b-e2fc-4565-a496-96a750c2fcb6";
-    allowDiscards = true;
-  };
-  boot.initrd.luks.devices."luks-b8718736-e3c5-41d5-9c69-4c4106b76491".allowDiscards = true;
+  # Encrypted root + swap. The `.device` for each LUKS container is declared in
+  # hardware-configuration.nix (cryptroot) plus the cryptswap line added there;
+  # the allowDiscards merges below attach to them by matching name.
+  # allowDiscards so TRIM (services.fstrim, enabled in common) reaches the SSD.
+  # Tradeoff: discard reveals which blocks are unused to disk access.
+  boot.initrd.luks.devices."cryptroot".allowDiscards = true;
+  boot.initrd.luks.devices."cryptswap".allowDiscards = true;
+
 
   # First-install release for this machine's stateful data — leave as-is.
   system.stateVersion = "26.05";
