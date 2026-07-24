@@ -78,7 +78,13 @@
   virtualisation.docker.enable = true;
 
   nixpkgs.config.allowUnfree = true;
-  environment.systemPackages = with pkgs; [ ];
+  environment.systemPackages = with pkgs; [
+    # X11 apps under niri (Steam client, older games, anything without a Wayland
+    # backend) need an X server. niri has native xwayland-satellite integration:
+    # with this binary on PATH and the `xwayland-satellite` node in niri's
+    # config.kdl, niri starts it on demand and sets $DISPLAY for spawned clients.
+    xwayland-satellite
+  ];
 
   # Periodic batched TRIM. Per-device `allowDiscards` is set in each host's LUKS
   # declaration, since the device UUIDs are hardware-specific.
@@ -91,9 +97,10 @@
 
   programs.niri.enable = true;
 
-  # Run Electron/Chromium apps (Discord, Zed, etc.) natively on Wayland.
-  # Without this they default to the X11 backend, which fails under niri since
-  # there's no XWayland server running ("Missing X server or $DISPLAY").
+  # Run Electron/Chromium apps (Discord, Zed, etc.) natively on Wayland rather
+  # than through XWayland — sharper rendering, proper fractional scaling, and no
+  # dependence on the X server. (XWayland itself is available via
+  # xwayland-satellite above, for X11-only apps like the Steam client.)
   environment.sessionVariables.NIXOS_OZONE_WL = "1";
 
   # OpenSSH — enabled primarily so each host generates its

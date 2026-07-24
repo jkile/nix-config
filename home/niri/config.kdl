@@ -312,6 +312,15 @@ spawn-at-startup "nightlight" "start"
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
 
+// XWayland for X11-only apps (Steam client, older games). niri manages
+// xwayland-satellite itself: it starts the binary (installed system-wide in
+// modules/common.nix) on demand and exports $DISPLAY to spawned clients, so
+// no spawn-at-startup or manual DISPLAY is needed. Wayland-native apps still
+// go straight to Wayland (NIXOS_OZONE_WL=1 keeps Electron off XWayland).
+xwayland-satellite {
+    path "xwayland-satellite"
+}
+
 hotkey-overlay {
     // Uncomment this line to disable the "Important Hotkeys" pop-up at startup.
     // skip-at-startup
