@@ -12,9 +12,9 @@
 # age key values matter, so renaming an anchor never requires re-encrypting.
 keys:
   # personal key — `age-keygen -y ~/.config/sops/age/keys.txt`
-  - &admin_jakek age18fqt6evstd7vl44zst9hhjqhqts26w8lz4a8dnnhdaqjdyj4dp2qhqsuuh
+  - &admin_jakek age1whmz44htegdkj6ta5yackgxv852cq75nawz3r2hqege98tqmdvaq9d4e42
   # this machine — `ssh-to-age < /etc/ssh/ssh_host_ed25519_key.pub`
-  - &host_jakek age1hf9schr77a95764dq5awdap994m67f2surczxaunzxcj93nnxsdq8erqkp
+  - &host_jakek age18xmrfllfxkmsaudzu6jkds8h24qdc9um3wqcjdym6hs3tqqu832qasm8f7
 
 creation_rules:
   - path_regex: secrets/[^/]+\.(yaml|json)$
