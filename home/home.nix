@@ -303,7 +303,10 @@ let
   };
 in
 {
-  imports = [ inputs.zen-browser.homeModules.beta ];
+  imports = [
+    inputs.zen-browser.homeModules.beta
+    ./claude-code.nix # Claude Code CLI + declarative skills (settings.json left mutable)
+  ];
 
   home.username = "jakek";
   home.homeDirectory = "/home/jakek";
@@ -319,7 +322,7 @@ in
     nerd-fonts.symbols-only
     # Nord GTK theme + Nordzy icons/cursor are installed via the `gtk` module
     # below (theme/iconTheme/cursorTheme .package), so they're not listed here.
-    claude-code
+    # claude-code is installed by ./claude-code.nix (programs.claude-code).
     qpwgraph # PipeWire patchbay — route the ULN-8's 12 discrete channels
     pwvucontrol # full GTK4 mixer — middle-click volume module for per-channel detail
     swayosd # on-screen volume/mute popup (server spawned by niri; see config.kdl)
