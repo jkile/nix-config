@@ -14,6 +14,26 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   boot.loader.systemd-boot.configurationLimit = 20;
+  boot.loader.systemd-boot.consoleMode = "max"; # largest console resolution — crisp on hi-res displays
+  boot.loader.timeout = 3; # shorter menu; hold a key during POST to pause on it
+
+  # Flicker-free graphical boot. systemd-in-initrd (emergencyAccess below pulls
+  # it in) plus early KMS (amdgpu is in each host's initrd) lets Plymouth own the
+  # screen from initrd onward — including a graphical LUKS passphrase dialog
+  # instead of a raw text prompt. `quiet` + trimmed log levels keep it clean;
+  # drop `quiet`/set consoleLogLevel higher when debugging a boot failure.
+  boot.plymouth = {
+    enable = true;
+    theme = "nixos-bgrt"; # animated NixOS snowflake
+    themePackages = [ pkgs.nixos-bgrt-plymouth ];
+  };
+  boot.initrd.verbose = false;
+  boot.consoleLogLevel = 3;
+  boot.kernelParams = [
+    "quiet" # `splash` is added automatically by the plymouth module
+    "rd.udev.log_level=3"
+    "udev.log_priority=3"
+  ];
 
   boot.initrd.systemd.emergencyAccess = true;
   hardware.enableRedistributableFirmware = true;
