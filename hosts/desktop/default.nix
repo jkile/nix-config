@@ -1,4 +1,5 @@
-# Desktop host "jakek" — Radeon RX 6700 XT. Hardware-specific bits only;
+# Desktop host "jakek" — Radeon AI PRO R9700 (Navi 48, RDNA4, 32 GB) on an
+# Intel Core Ultra 7 270K Plus (Arrow Lake-S). Hardware-specific bits only;
 # everything portable is in modules/common.nix, and audio (including the ULN-8
 # tuning) is in modules/audio.nix — both pulled in by the flake for every host.
 {
@@ -12,9 +13,10 @@
 
   networking.hostName = "jakek";
 
-  # GPU — Radeon RX 6700 XT (RDNA2, amdgpu). Declared explicitly rather than
-  # relying on COSMIC's implicit enable, so the driver + VA-API stack is pinned
-  # and diagnosable. `vainfo` (from libva-utils) verifies HW video decode.
+  # GPU — Radeon AI PRO R9700 (Navi 48, RDNA4, amdgpu). Declared explicitly
+  # rather than relying on COSMIC's implicit enable, so the driver + VA-API
+  # stack is pinned and diagnosable. `vainfo` (from libva-utils) verifies HW
+  # video decode.
   boot.initrd.kernelModules = [ "amdgpu" ];
   hardware.graphics = {
     enable = true;
@@ -24,7 +26,7 @@
       libvdpau-va-gl # VDPAU->VA-API shim for the odd app that wants VDPAU
     ];
   };
-  # RDNA2 is most stable on Mesa's RADV; ensure nothing silently picks amdvlk.
+  # RDNA4 is most stable on Mesa's RADV; ensure nothing silently picks amdvlk.
   environment.variables.AMD_VULKAN_ICD = "RADV";
 
   # ---- Steam / gaming ----
@@ -51,6 +53,13 @@
   environment.systemPackages = with pkgs; [
     mangohud
     protontricks
+
+    # Local LLM inference on the R9700 via the Vulkan (RADV) backend. Vulkan
+    # rather than ROCm: RDNA4 (gfx1201) ROCm support is still stabilizing, and
+    # the Vulkan path needs no extra driver config — RADV is already provided by
+    # hardware.graphics above. Offload a full model with `llama-cli -ngl 999`.
+    (llama-cpp.override { vulkanSupport = true; })
+    vulkan-tools # `vulkaninfo --summary` — confirms the GPU is a Vulkan device
   ];
 
   # Encrypted root + swap. The `.device` for each LUKS container is declared in
