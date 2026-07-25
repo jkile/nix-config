@@ -43,18 +43,15 @@
     # all 12 in / 12 out channels, but via PipeWire's ACP multichannel path
     # rather than "Pro Audio".
     #
-    # NOTE: an earlier revision of this comment claimed Pro Audio was broken
-    # (full-scale garbage on empty channels) and that Multichannel "drives the
-    # same hardware cleanly". That was wrong, and it matters — see the capture
-    # fault documented at the bottom of this file. Both profiles show the
-    # SAME intermittent fault at the same rate; measured over 8 trials each,
-    # pro-audio failed 5/8 and multichannel 5/8. The original conclusion came
-    # from sampling a ~50% coin flip once or twice per profile.
+    # NOTE: an earlier revision of this comment blamed the Pro Audio profile
+    # for "full-scale garbage on empty channels" and credited Multichannel with
+    # driving the hardware cleanly. That garbage was real but the attribution
+    # was wrong — it was the 128-frame quantum, fixed below, and it affected
+    # both profiles. The profiles were never validly compared against each
+    # other, so treat any claimed difference between them as unmeasured.
     #
-    # Multichannel is still the right pin, just not for noise reasons: it gives
-    # a defined 12 in / 12 out layout over PipeWire's ACP path, whereas
-    # pro-audio on this unit also intermittently fails to instantiate its
-    # capture source ("no target node available").
+    # Keep the pin for what it actually buys: a defined 12 in / 12 out layout
+    # over the ACP path.
     wireplumber.extraConfig."51-metric-halo-profile" = {
       "monitor.alsa.rules" = [
         {
@@ -72,13 +69,27 @@
     #    times out: usb_set_interface -110) and renumbers the node, silently
     #    dropping the links of apps already using it (e.g. Discord loses its
     #    input). Keeping it always streaming avoids that.
-    #  - node.latency = 128/48000 (~2.7ms/dir, ~5.3ms round-trip): pins the
-    #    quantum low for DAW monitoring. Set here (WirePlumber, scoped to the
-    #    ULN driver) rather than as a global default.clock.quantum on purpose —
-    #    the global knob lives in the pipewire *daemon* config, and restarting
-    #    the daemon degrades this unit's ACP profile enumeration (forcing a USB
-    #    replug). WirePlumber restarts don't. Verified stable at 128 with zero
-    #    xruns; step to 256/48000 if a heavy session ever crackles.
+    #  - node.latency = 256/48000 (~5.3ms/dir, ~10.7ms round-trip): low enough
+    #    for DAW monitoring, and the lowest value that is actually CLEAN on this
+    #    unit. Do NOT drop it back to 128: that corrupts capture badly (see the
+    #    bottom of this file). Measured on ch2, scoring each second of a capture
+    #    as corrupt if its peak exceeds -60 dBFS (healthy floor is ~-84):
+    #
+    #      quantum   corrupted seconds
+    #      128       19/27, 12/27, 39/59   -> 70/113   worst peak 0.0 dBFS
+    #      256        0/27,  0/27,  0/59   ->  0/113   worst peak -83.9 dBFS
+    #      512        0/27,  0/27          ->  0/54
+    #      1024       0/27,  0/27          ->  0/54
+    #
+    #    Runs were interleaved (128, 1024, 128, 1024 ...) because this fault
+    #    drifts over minutes and blocked A/B testing gives false results.
+    #    Step to 512 if a heavy session ever crackles.
+    #
+    #    Set here (WirePlumber, scoped to the ULN driver) rather than as a
+    #    global default.clock.quantum on purpose — the global knob lives in the
+    #    pipewire *daemon* config, and restarting the daemon degrades this
+    #    unit's ACP profile enumeration (forcing a USB replug). WirePlumber
+    #    restarts don't.
     wireplumber.extraConfig."52-metric-halo-node-tuning" = {
       "monitor.alsa.rules" = [
         {
@@ -87,47 +98,50 @@
           ];
           actions.update-props = {
             "session.suspend-timeout-seconds" = 0;
-            "node.latency" = "128/48000";
+            "node.latency" = "256/48000";
           };
         }
       ];
     };
   };
 
-  # ---- KNOWN UNFIXED: intermittent full-scale capture fault ----
-  # Roughly half the time an app starts a capture stream from this ULN-8, the
-  # stream carries full-scale digital noise instead of the input — continuous
-  # static, while the hardware itself is clean. Measured 2026-07-25:
+  # ---- FIXED: intermittent capture corruption (node.latency) ----
+  # Symptom: apps got bursts of full-scale digital noise plus dropouts from the
+  # ULN-8 capture — continuous static under the signal. Cause was the 128-frame
+  # quantum above; 256 is clean. Kept here because the diagnosis was slow and
+  # the traps are worth knowing.
   #
-  #   raw ALSA hw:3   ch1 -33.1 dBFS (mic)   ch2 -100.0 dBFS   <- always clean
-  #   via PipeWire    ch1 -20.4 / peak -0.1  ch2 -17.2 / 0.0   <- when faulted
+  # The corruption was structured, not random: zero-crossing rate 0.10-0.27
+  # (random memory would be ~0.5), with a repeating two-phase frame pattern in
+  # which quiet samples appeared at huge magnitudes. Consistent with a framing
+  # or stride error on this device's 36-byte frames (S24_3LE x 12ch, single
+  # altsetting, ASYNC endpoint) when the quantum is too small to keep up.
   #
-  # `arecord -D hw:3` has never once faulted, so the device, the USB link and
-  # snd-usb-audio are fine. The fault is above ALSA, in PipeWire.
+  # MEASUREMENT TRAPS — these produced a string of confident wrong answers:
+  #  - Short probes are worthless. Every stream has a large burst in roughly
+  #    its first second, so a 2-3s capture mostly measures that. 3s probes gave
+  #    a convincing ~50% "fault rate" that looked like a per-stream coin flip
+  #    and led to an entire detect-and-reopen guard service being built for a
+  #    problem that did not exist in that shape. Capture >=30s and score each
+  #    second separately.
+  #  - The fault drifts over minutes. Blocked A/B testing gives false results:
+  #    one 20s run scored 1024 at 0/19 and a later run of the same config at
+  #    14/18. Interleave configurations (A, B, A, B) and replicate.
+  #  - Those two traps also generated a false "plain ALSA corrupts too, so it
+  #    is not PipeWire" conclusion. With 30s captures, ALSA is spotless:
+  #      hw native S24_3LE   0/29     plughw S32_LE  0/29
+  #      pipewire-pulse     12/27 and 24/27
+  #    It was PipeWire-side all along.
   #
-  # Ruled out by measurement, so please don't re-try these:
-  #  - Profile choice. pro-audio 5/8 failures, multichannel 5/8 — identical.
-  #  - use-acp=false (4/8), pinned format/rate (3/8), period-size 1024 (4/8),
-  #    node.latency 1024 + headroom (3/8), disable-batch (5/8), baseline (5/8).
-  #    56 trials over 7 configs, 51.8% overall, nothing distinguishable.
-  #  - Channel remixing. Capturing at the source's native 12ch faulted 6/6, so
-  #    it is not the 12->2 downmix path.
-  #  - USB autosuspend (already off), and the Studio Display (predates it).
+  # Also checked and NOT the cause: ACP on/off, mmap on/off, period-size,
+  # headroom, pinned format, disable-batch, profile choice (pro-audio vs
+  # multichannel), channel remixing, USB autosuspend, and RT starvation
+  # (pipewire's data-loop.0 correctly runs SCHED_RR prio 20 via rtkit — check
+  # the thread list, not the main pid, which is correctly SCHED_OTHER).
+  # A Metric Halo firmware update did not change the behaviour either.
   #
-  # It re-rolls per STREAM, not per device open: six consecutive probes of one
-  # unchanged node instance (object.serial 10078) read CLEAN, faulted, faulted,
-  # faulted, CLEAN, faulted. That kills the obvious workaround — a service that
-  # validates the device after it appears and reopens it until clean cannot
-  # help, because the next app to open a stream gets its own independent roll.
-  # A guard along those lines was written, tested, and removed for this reason.
-  #
-  # Detection, if you want to check the current stream: capture ch2 (an unused
-  # input, -100 dBFS when healthy) and look at its peak. Below about -60 dBFS
-  # is clean; anything near 0 dBFS is the fault.
+  # To re-measure: ch2 is an unused input, ~-84 dBFS when healthy. Score a
+  # second as corrupt if its ch2 peak exceeds -60 dBFS.
   #   parecord --device=alsa_input.usb-Metric_Halo_ULN-8mkIV_49485_12x12-00.multichannel-input \
   #     --format=s24le --rate=48000 --channels=2 --file-format=raw /tmp/c.pcm
-  #
-  # Worth reporting upstream to PipeWire; this unit has non-standard descriptors
-  # ("Quirk or no altset; falling back to MIDI 1.0" on every enumeration) and is
-  # a plausible trigger for a race in capture-stream setup.
 }
