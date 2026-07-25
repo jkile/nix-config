@@ -365,7 +365,9 @@ in
     ssh-to-age
 
     proton-vpn # ProtonVPN app; provides `protonvpn-app` (waybar VPN module click)
-    
+
+    obsidian # markdown notes (Electron; Wayland via the global NIXOS_OZONE_WL)
+
     k9s # Kubernetes terminal UI tool
   ];
 
