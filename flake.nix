@@ -42,6 +42,7 @@
           modules = [
             ./modules/common.nix
             ./modules/audio.nix # PipeWire + ULN-8; shared (the interface roams between hosts)
+            ./modules/thunderbolt.nix # Thunderbolt display support
             sops-nix.nixosModules.sops
             home-manager.nixosModules.home-manager
             {

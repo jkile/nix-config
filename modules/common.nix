@@ -33,6 +33,7 @@
     "quiet" # `splash` is added automatically by the plymouth module
     "rd.udev.log_level=3"
     "udev.log_priority=3"
+    "pcie_ports=native"  # Enable PCIe native mode for better Thunderbolt support
   ];
 
   boot.initrd.systemd.emergencyAccess = true;

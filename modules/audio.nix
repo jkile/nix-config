@@ -43,15 +43,18 @@
     # all 12 in / 12 out channels, but via PipeWire's ACP multichannel path
     # rather than "Pro Audio".
     #
-    # We do NOT use "pro-audio" here: on this ULN-8 mkIV, the Pro Audio ACP
-    # path is broken — its capture source often fails to instantiate ("no
-    # target node available"), and when it does it delivers full-scale garbage
-    # on every channel (verified: raw ALSA hw:0 capture is clean/silent on
-    # empty channels at -137 dB, while the Pro Audio PipeWire source reads
-    # -13 dB full-scale noise on those same empty channels). Almost certainly
-    # a PipeWire ACP bug tied to this unit's non-standard USB descriptor (it
-    # logs "Quirk or no altset; falling back to MIDI 1.0" at enumeration).
-    # The Multichannel profile drives the same hardware cleanly.
+    # NOTE: an earlier revision of this comment claimed Pro Audio was broken
+    # (full-scale garbage on empty channels) and that Multichannel "drives the
+    # same hardware cleanly". That was wrong, and it matters — see the capture
+    # fault documented at the bottom of this file. Both profiles show the
+    # SAME intermittent fault at the same rate; measured over 8 trials each,
+    # pro-audio failed 5/8 and multichannel 5/8. The original conclusion came
+    # from sampling a ~50% coin flip once or twice per profile.
+    #
+    # Multichannel is still the right pin, just not for noise reasons: it gives
+    # a defined 12 in / 12 out layout over PipeWire's ACP path, whereas
+    # pro-audio on this unit also intermittently fails to instantiate its
+    # capture source ("no target node available").
     wireplumber.extraConfig."51-metric-halo-profile" = {
       "monitor.alsa.rules" = [
         {
@@ -90,4 +93,41 @@
       ];
     };
   };
+
+  # ---- KNOWN UNFIXED: intermittent full-scale capture fault ----
+  # Roughly half the time an app starts a capture stream from this ULN-8, the
+  # stream carries full-scale digital noise instead of the input — continuous
+  # static, while the hardware itself is clean. Measured 2026-07-25:
+  #
+  #   raw ALSA hw:3   ch1 -33.1 dBFS (mic)   ch2 -100.0 dBFS   <- always clean
+  #   via PipeWire    ch1 -20.4 / peak -0.1  ch2 -17.2 / 0.0   <- when faulted
+  #
+  # `arecord -D hw:3` has never once faulted, so the device, the USB link and
+  # snd-usb-audio are fine. The fault is above ALSA, in PipeWire.
+  #
+  # Ruled out by measurement, so please don't re-try these:
+  #  - Profile choice. pro-audio 5/8 failures, multichannel 5/8 — identical.
+  #  - use-acp=false (4/8), pinned format/rate (3/8), period-size 1024 (4/8),
+  #    node.latency 1024 + headroom (3/8), disable-batch (5/8), baseline (5/8).
+  #    56 trials over 7 configs, 51.8% overall, nothing distinguishable.
+  #  - Channel remixing. Capturing at the source's native 12ch faulted 6/6, so
+  #    it is not the 12->2 downmix path.
+  #  - USB autosuspend (already off), and the Studio Display (predates it).
+  #
+  # It re-rolls per STREAM, not per device open: six consecutive probes of one
+  # unchanged node instance (object.serial 10078) read CLEAN, faulted, faulted,
+  # faulted, CLEAN, faulted. That kills the obvious workaround — a service that
+  # validates the device after it appears and reopens it until clean cannot
+  # help, because the next app to open a stream gets its own independent roll.
+  # A guard along those lines was written, tested, and removed for this reason.
+  #
+  # Detection, if you want to check the current stream: capture ch2 (an unused
+  # input, -100 dBFS when healthy) and look at its peak. Below about -60 dBFS
+  # is clean; anything near 0 dBFS is the fault.
+  #   parecord --device=alsa_input.usb-Metric_Halo_ULN-8mkIV_49485_12x12-00.multichannel-input \
+  #     --format=s24le --rate=48000 --channels=2 --file-format=raw /tmp/c.pcm
+  #
+  # Worth reporting upstream to PipeWire; this unit has non-standard descriptors
+  # ("Quirk or no altset; falling back to MIDI 1.0" on every enumeration) and is
+  # a plausible trigger for a race in capture-stream setup.
 }

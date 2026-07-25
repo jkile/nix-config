@@ -114,6 +114,10 @@ output "LG Electronics LG ULTRAGEAR 108NTWG29193" {
     position x=0 y=0
 }
 
+// Connected over the board's rear TB4 port (see modules/thunderbolt.nix), so
+// it only exists once the iGPU is enabled in BIOS — the TB ports take their DP
+// source from it. Native mode is 5120x2880@60; leave it unset so niri picks
+// the preferred mode rather than pinning one the panel doesn't advertise.
 output "Apple Computer Inc StudioDisplay 0x7AF364D3" {
     scale 2
     position x=3440 y=0
