@@ -32,10 +32,23 @@ let
 
   # Discord (Electron) hangs on the loading screen under niri because of the
   # wp-fractional-scale protocol — the renderer pegs a core forever. Disabling
-  # WaylandFractionalScaleV1 fixes it, and since both our outputs are integer-
-  # scaled (2x + 1x) we lose nothing. NIXOS_OZONE_WL (global) keeps it on Wayland.
-  # WebRTCPipeWireCapturer routes screen capture through the xdg-desktop-portal
-  # instead of Electron's broken-on-Wayland desktopCapturer path.
+  # WaylandFractionalScaleV1 fixes it, and since our output is integer-scaled
+  # we lose nothing. NIXOS_OZONE_WL (global) keeps it on Wayland.
+  #
+  # VK_DRIVER_FILES is what makes screen sharing work. Discord's "linux-vulkan"
+  # capture path imports the portal's DMA-BUFs through Vulkan, but Discord ships
+  # its own unpatched libvulkan.so.1 (first on LD_LIBRARY_PATH) that has no idea
+  # NixOS keeps ICD manifests under /run/opengl-driver. So vkCreateInstance finds
+  # no drivers, the capturer ends up advertising zero formats, and the PipeWire
+  # link dies with "no more input formats" — the portal picker appears, then the
+  # stream immediately errors out. Pointing the bundled loader at the RADV
+  # manifest fixes it. Set explicitly rather than at the icd.d directory so the
+  # prober can't pick lavapipe over the real GPU.
+  #
+  # Don't re-add --enable-features=WebRTCPipeWireCapturer here: that feature no
+  # longer exists in Electron 37, and because Chromium keeps one value per switch
+  # a second --enable-features silently overwrote the WaylandWindowDecorations
+  # the nixpkgs wrapper passes.
   discord-wayland = pkgs.symlinkJoin {
     name = "discord-wayland";
     paths = [ pkgs.discord ];
@@ -44,7 +57,8 @@ let
       for b in Discord discord; do
         rm -f "$out/bin/$b"
         makeWrapper ${pkgs.discord}/bin/Discord "$out/bin/$b" \
-          --add-flags "--enable-features=WebRTCPipeWireCapturer" \
+          --set-default VK_DRIVER_FILES \
+            "${pkgs.addDriverRunpath.driverLink}/share/vulkan/icd.d/radeon_icd.x86_64.json" \
           --add-flags "--disable-features=WaylandFractionalScaleV1"
       done
     '';

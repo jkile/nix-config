@@ -21,6 +21,14 @@
   # stack is pinned and diagnosable. `vainfo` (from libva-utils) verifies HW
   # video decode.
   boot.initrd.kernelModules = [ "amdgpu" ];
+  # runpm=0 disables amdgpu runtime power management. With every display
+  # unplugged the card has no active outputs, goes idle, and runtime-suspends
+  # into D3cold (it reports "Using BOCO for runtime pm"); on wake its own
+  # internal PCIe bridge fails to retrain and the GPU is dead until a reboot:
+  #   pcieport 0000:03:00.0: broken device, retraining ... / retraining failed
+  #   amdgpu: resume of IP block <gfx_v12_0> failed -110
+  # Costs a few idle watts. Revisit if a later kernel fixes RDNA4 D3cold resume.
+  boot.kernelParams = [ "amdgpu.runpm=0" ];
   hardware.graphics = {
     enable = true;
     enable32Bit = true; # 32-bit GL/VA-API (games, wine, some media paths)
