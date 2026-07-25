@@ -317,7 +317,18 @@ in
     ripgrep
     fd
     procs
-    btop
+    # btop with its AMD GPU panel working. btop talks to Radeon cards only
+    # through ROCm's librocm_smi64, which it dlopens at runtime; without it the
+    # GPU meters silently stay empty, which is why a stock btop shows nothing on
+    # the R9700. rocmSupport doesn't build a ROCm *compute* stack — it only adds
+    # rocm-smi (a sysfs/ioctl management library) to btop's rpath, so inference
+    # keeps using the Vulkan path untouched. Costs ~169 MiB of closure.
+    #
+    # Deliberately an override on this one package rather than
+    # `nixpkgs.config.rocmSupport = true`: that flag is read by many packages,
+    # llama-cpp among them, so setting it globally would trigger a from-source
+    # ROCm build of llama.cpp — exactly what hosts/desktop/llama-cpp.nix avoids.
+    (btop.override { rocmSupport = true; })
     nerd-fonts.jetbrains-mono
     nerd-fonts.symbols-only
     # Nord GTK theme + Nordzy icons/cursor are installed via the `gtk` module
@@ -354,6 +365,8 @@ in
     ssh-to-age
 
     proton-vpn # ProtonVPN app; provides `protonvpn-app` (waybar VPN module click)
+    
+    k9s # Kubernetes terminal UI tool
   ];
 
   xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;

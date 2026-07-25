@@ -84,6 +84,7 @@
     # with this binary on PATH and the `xwayland-satellite` node in niri's
     # config.kdl, niri starts it on demand and sets $DISPLAY for spawned clients.
     xwayland-satellite
+    k9s
   ];
 
   # Periodic batched TRIM. Per-device `allowDiscards` is set in each host's LUKS

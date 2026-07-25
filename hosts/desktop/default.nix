@@ -9,7 +9,10 @@
 }:
 
 {
-  imports = [ ./hardware-configuration.nix ];
+  imports = [
+    ./hardware-configuration.nix
+    ./llama-cpp.nix # local Qwen3-Coder inference on the R9700 + the `qwen` CLI
+  ];
 
   networking.hostName = "jakek";
 
@@ -49,17 +52,11 @@
   # runs. Enable per-title in Steam launch options: `gamemoderun %command%`.
   programs.gamemode.enable = true;
 
-  # FPS/vitals overlay + a Proton tweak helper.
+  # FPS/vitals overlay + a Proton tweak helper. llama.cpp, vulkan-tools and the
+  # Qwen Code CLI moved to ./llama-cpp.nix.
   environment.systemPackages = with pkgs; [
     mangohud
     protontricks
-
-    # Local LLM inference on the R9700 via the Vulkan (RADV) backend. Vulkan
-    # rather than ROCm: RDNA4 (gfx1201) ROCm support is still stabilizing, and
-    # the Vulkan path needs no extra driver config — RADV is already provided by
-    # hardware.graphics above. Offload a full model with `llama-cli -ngl 999`.
-    (llama-cpp.override { vulkanSupport = true; })
-    vulkan-tools # `vulkaninfo --summary` — confirms the GPU is a Vulkan device
   ];
 
   # Encrypted root + swap. The `.device` for each LUKS container is declared in
@@ -69,7 +66,6 @@
   # Tradeoff: discard reveals which blocks are unused to disk access.
   boot.initrd.luks.devices."cryptroot".allowDiscards = true;
   boot.initrd.luks.devices."cryptswap".allowDiscards = true;
-
 
   # First-install release for this machine's stateful data — leave as-is.
   system.stateVersion = "26.05";
