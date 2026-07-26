@@ -69,11 +69,33 @@
     #    times out: usb_set_interface -110) and renumbers the node, silently
     #    dropping the links of apps already using it (e.g. Discord loses its
     #    input). Keeping it always streaming avoids that.
-    #  - node.latency = 256/48000 (~5.3ms/dir, ~10.7ms round-trip): low enough
-    #    for DAW monitoring, and the lowest value that is actually CLEAN on this
-    #    unit. Do NOT drop it back to 128: that corrupts capture badly (see the
-    #    bottom of this file). Measured on ch2, scoring each second of a capture
-    #    as corrupt if its peak exceeds -60 dBFS (healthy floor is ~-84):
+    #  - node.latency = 512/44100 (~11.6ms/dir, ~23ms round-trip): the lowest
+    #    value that is CLEAN for playback on this unit. Two separate findings
+    #    are folded into that number — read both before lowering it.
+    #
+    #    (a) DENOMINATOR: it must be 44100, the LOWEST allowed rate, not 48000.
+    #    PipeWire's clock.power-of-two-quantum defaults to true, so the
+    #    requested latency is converted to frames at the *current* graph rate
+    #    and then rounded DOWN to a power of two. The old "256/48000" therefore
+    #    only gave 256 frames while the graph happened to run at 48k; the moment
+    #    anything played 44.1k content (Firefox, most streaming) the request
+    #    scaled to 256*44100/48000 = 235 frames and floored to 128 — silently
+    #    reinstating the exact broken quantum this setting exists to avoid.
+    #    Expressing the request at the lowest allowed rate makes the floor land
+    #    on >=512 frames at every rate in the allowed-rates list above.
+    #
+    #    (b) NUMERATOR: 512, not 256. 256 is clean for *capture* (measured
+    #    below) but not for playback. Measured as xruns/min on a playing client
+    #    with pw-top, interleaved because this fault drifts over minutes:
+    #
+    #      quantum   playback xruns/min
+    #      128       ~130                 <- what the 256/48000 bug produced
+    #      256       2, 6
+    #      512       0, 0
+    #      1024      0
+    #
+    #    Capture, scored separately on ch2 (each second corrupt if its peak
+    #    exceeds -60 dBFS; healthy floor is ~-84):
     #
     #      quantum   corrupted seconds
     #      128       19/27, 12/27, 39/59   -> 70/113   worst peak 0.0 dBFS
@@ -81,9 +103,10 @@
     #      512        0/27,  0/27          ->  0/54
     #      1024       0/27,  0/27          ->  0/54
     #
-    #    Runs were interleaved (128, 1024, 128, 1024 ...) because this fault
-    #    drifts over minutes and blocked A/B testing gives false results.
-    #    Step to 512 if a heavy session ever crackles.
+    #    Quantum is graph-wide, so capture and playback cannot be tuned apart
+    #    while both live on this one driver — 512 is the max of the two needs.
+    #    If a tracking session ever needs tighter monitoring, "256/44100" is the
+    #    documented fallback: it costs a few xruns/min but stays off 128.
     #
     #    Set here (WirePlumber, scoped to the ULN driver) rather than as a
     #    global default.clock.quantum on purpose — the global knob lives in the
@@ -98,7 +121,7 @@
           ];
           actions.update-props = {
             "session.suspend-timeout-seconds" = 0;
-            "node.latency" = "256/48000";
+            "node.latency" = "512/44100";
           };
         }
       ];
@@ -108,8 +131,9 @@
   # ---- FIXED: intermittent capture corruption (node.latency) ----
   # Symptom: apps got bursts of full-scale digital noise plus dropouts from the
   # ULN-8 capture — continuous static under the signal. Cause was the 128-frame
-  # quantum above; 256 is clean. Kept here because the diagnosis was slow and
-  # the traps are worth knowing.
+  # quantum above; 256 is clean for capture (playback needs 512 — see the
+  # node.latency notes). Kept here because the diagnosis was slow and the traps
+  # are worth knowing.
   #
   # The corruption was structured, not random: zero-crossing rate 0.10-0.27
   # (random memory would be ~0.5), with a repeating two-phase frame pattern in
