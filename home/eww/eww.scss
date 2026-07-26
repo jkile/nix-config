@@ -1,9 +1,14 @@
-// Audio control panel — Nord palette, matched to the waybar/mako/fuzzel look
-// (translucent rounded dark surface, frost-blue accents). GTK3 CSS (eww).
+// Audio control panel — GTK3 CSS (eww).
 //
-// Nord: nord0 #2E3440  nord1 #3B4252  nord3 #4C566A  nord4 #D8DEE9
-//       nord6 #ECEFF4  nord7 #8FBCBB  nord8 #88C0D0  nord9 #81A1C1
-//       nord14 (green) #A3BE8C  nord11 (red) #BF616A
+// Kept in sync by hand with the `ui` token block in home/home.nix; eww reads
+// this file directly rather than through Nix interpolation, so the values are
+// literal. If you re-grade the palette there, mirror it here.
+//
+//   surface1 #232B36   panel            line       #2B3441  divider
+//   surface2 #2E3440   hover            lineStrong #3F4A5C  panel edge
+//   surface3 #3B4252   active
+//   text     #ECEFF4   textDim  #AEB8C8  textMute #8B96A8  textFaint #667186
+//   accent   #88C0D0   ok       #A3BE8C
 
 * {
   font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font";
@@ -11,19 +16,24 @@
 }
 
 .audio-panel {
-  background-color: rgba(46, 52, 64, 0.92);
-  border: 1px solid rgba(76, 86, 106, 0.6);
-  border-radius: 16px;
+  background-color: rgba(35, 43, 54, 0.94);
+  border: 1px solid rgba(63, 74, 92, 0.7);
+  border-radius: 12px;          // matches niri, waybar, fuzzel, mako
   padding: 14px 16px;
-  margin: 6px;               // breathing room from the screen edge
-  color: #D8DEE9;
+  margin: 6px;                  // breathing room from the screen edge
+  color: #AEB8C8;
 }
 
+// Section headers. Previously bold nord9 — accent-coloured headings compete
+// with the content they label. Small letterspaced caps in the muted tone reads
+// as structure instead: monospace has no true small-caps, but uppercase at a
+// reduced size with open tracking gets there, and the fixed advance width makes
+// the tracking look deliberate rather than accidental.
 .section {
-  color: #81A1C1;
-  font-weight: bold;
-  font-size: 11px;
-  margin: 12px 2px 6px 2px;
+  color: #8B96A8;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  margin: 14px 2px 6px 2px;
 }
 .section:first-child { margin-top: 2px; }
 
@@ -33,36 +43,47 @@
 
 .mute-btn {
   background-color: transparent;
-  color: #8FBCBB;
+  color: #AEB8C8;
   font-size: 16px;
   padding: 0 6px;
   border-radius: 8px;
 }
-.mute-btn:hover { background-color: rgba(76, 86, 106, 0.5); }
+.mute-btn:hover {
+  background-color: #3B4252;
+  color: #ECEFF4;
+}
 
+// Percentages are metadata, not content — muted, and wide enough that the
+// monospaced digits hold a stable column as the value changes.
 .pct {
-  color: #4C566A;
+  color: #8B96A8;
   min-width: 42px;
 }
 
 // GTK3 scale anatomy: scale > trough > highlight, plus the `slider` knob.
+// 4px track: thin enough to read as a measurement rather than a control slab,
+// with the knob carrying the affordance.
 scale trough {
-  min-height: 6px;
-  border-radius: 6px;
-  background-color: rgba(76, 86, 106, 0.5);
+  min-height: 4px;
+  border-radius: 2px;
+  background-color: #2E3440;
 }
 scale highlight {
-  border-radius: 6px;
+  border-radius: 2px;
   background-color: #88C0D0;
 }
 scale slider {
   background-color: #ECEFF4;
   border-radius: 50%;
-  min-width: 13px;
-  min-height: 13px;
-  margin: -5px;              // overlap the thin trough
+  min-width: 12px;
+  min-height: 12px;
+  margin: -5px;                 // overlap the thin trough
 }
-.app-slider highlight { background-color: #8FBCBB; }
+
+// Per-app sliders were nord7 (a second teal, one step off the accent) — close
+// enough to look like an accident rather than a distinction. They share the
+// accent now; the indentation and label already say which is which.
+.app-slider highlight { background-color: #88C0D0; }
 
 // Selectable device rows.
 .dev {
@@ -70,18 +91,28 @@ scale slider {
   border-radius: 8px;
   padding: 5px 8px;
   margin: 1px 0;
-  color: #D8DEE9;
+  color: #AEB8C8;
 }
-.dev:hover { background-color: rgba(76, 86, 106, 0.4); }
-.dev.active { color: #ECEFF4; font-weight: bold; }
+.dev:hover { background-color: #2E3440; }
 
-.dev-dot { color: #4C566A; font-size: 10px; }
-.dev.active .dev-dot { color: #A3BE8C; }
-.dev-vol { color: #4C566A; }
+// Selection is carried by the raised surface plus full-strength text, not by
+// weight. Toggling font-weight reflows the row in a proportional font and just
+// looks heavy in a monospaced one.
+.dev.active {
+  background-color: #3B4252;
+  color: #ECEFF4;
+}
 
-.app-name { color: #D8DEE9; }
+.dev-dot { color: #667186; font-size: 10px; }
+.dev.active .dev-dot { color: #A3BE8C; }   // green = this is the live sink
+.dev-vol { color: #8B96A8; }
+
+.app-name { color: #AEB8C8; }
+
+// Empty states get direction, not apology. Italic monospace renders as a
+// slanted upright rather than a true italic, so it reads as smudged — the
+// muted tone alone is enough to mark this as not-content.
 .empty {
-  color: #4C566A;
-  font-style: italic;
-  padding: 4px 2px;
+  color: #8B96A8;
+  padding: 6px 2px;
 }

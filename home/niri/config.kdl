@@ -176,21 +176,29 @@ layout {
         // off
 
         // How many logical pixels the ring extends out from the windows.
-        width 3
+        // 2px, down from 3: the ring only has to answer "which window has
+        // focus", and at 3px a saturated ring around every window starts
+        // competing with the window contents for attention.
+        width 2
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
         // - RGB hex: "#rgb", "#rgba", "#rrggbb", "#rrggbbaa"
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
-        // Nord frost gradient (nord8 -> nord10, 45°) to match waybar/fuzzel/mako.
-        active-gradient from="#88C0D0" to="#5E81AC" angle=45
+        // Solid accent (ui.accent / nord8). This was a 45° nord8 -> nord10
+        // gradient, which is the single most recognisable ricing cliché going —
+        // and a gradient on a 2px ring is invisible as a gradient anyway, so it
+        // was paying a stylistic cost for an effect nobody could see. A flat
+        // accent matches the one-accent rule the bar and panels now follow.
+        active-color "#88C0D0"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
-        // where you can see its inactive-color is on other monitors.
-        inactive-color "#3B4252"
+        // where you can see its inactive-color is on other monitors. Sits at
+        // ui.line so an unfocused monitor reads as a hairline, not a border.
+        inactive-color "#2B3441"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -254,17 +262,25 @@ layout {
         // You can change how shadows look. The values below are in logical
         // pixels and match the CSS box-shadow properties.
 
+        // Tightened from softness=30 spread=5 y=5 #0007. That was a broad, soft,
+        // half-transparent cloud — the default "add a drop shadow" look, which
+        // reads as haze rather than elevation. A shadow says how far a surface
+        // floats above the one behind it: short blur and near-zero spread with a
+        // denser colour gives a crisp contact edge, so windows sit *on* the
+        // desktop instead of smudging into it. Now that the wallpaper is a full
+        // ramp step darker, the shadow no longer has to work to be visible.
+
         // Softness controls the shadow blur radius.
-        softness 30
+        softness 14
 
         // Spread expands the shadow.
-        spread 5
+        spread 0
 
         // Offset moves the shadow relative to the window.
-        offset x=0 y=5
+        offset x=0 y=3
 
         // You can also change the shadow color and opacity.
-        color "#0007"
+        color "#00000099"
     }
 
     // Struts shrink the area occupied by windows, similarly to layer-shell panels.
