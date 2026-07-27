@@ -153,15 +153,29 @@ let
     /* niri draws the window edge (prefer-no-csd, 12px corners, 2px focus ring),
        so Firefox's own minimise/maximise/close buttons are a second, mismatched
        set of window controls — and the drag spacers reserve horizontal room for
-       a titlebar that no longer exists under a tiling WM. */
+       a titlebar that no longer exists under a tiling WM.
+       #toolbar-menubar is the File/Edit/View/History strip. It hides itself
+       when its `autohide` attribute is "true", but that attribute lives in the
+       profile's xulstore.json — mutable state this config can't reach, and in
+       this profile it is stuck at the literal string "-moz-missing" rather than
+       "true", so Firefox renders the bar permanently. Hiding it in CSS is the
+       declarative fix; every one of those menus is also in the ≡ panel. */
+    #toolbar-menubar,
     .titlebar-buttonbox-container,
     .titlebar-spacer {
       display: none !important;
     }
 
+    /* The page card below is inset by --nx-gap on its left, right and bottom.
+       The toolbar sits above it and was flush against the window edge, so the
+       chrome was the one thing in the window with no margin — which is what
+       made the top read as cramped even though the row itself is a normal
+       height. Same inset on all four sides now: everything lives inside one
+       consistent margin. */
     #navigator-toolbox {
       background-color: var(--nx-bg) !important;
       border-bottom: none !important;
+      padding-top: var(--nx-gap) !important;
     }
     /* Firefox's default is a soft drop shadow under the nav bar — the only
        blurred edge in a session built entirely on 1px hairlines, and it reads
@@ -170,11 +184,9 @@ let
     #nav-bar {
       box-shadow: none !important;
       border: none !important;
-      padding-block: 2px !important;
+      padding-block: 4px !important;
+      padding-inline: calc(var(--nx-gap) - 2px) !important;
     }
-    /* Tighter hit targets. Compact density gets most of the way; this closes
-       the rest of the gap to waybar's 4px module margins. */
-    :root { --toolbarbutton-inner-padding: 6px !important; }
     #nav-bar toolbarseparator { display: none !important; }
 
     /* ── The page as a card ──────────────────────────────────────────────── */
@@ -261,23 +273,36 @@ let
       scrollbar-width: thin !important;
     }
 
+    /* Row geometry. Tabs are the list you scan most, so they get the roomiest
+       treatment in the chrome: a taller row than Firefox ships, and the pill
+       inset from the rail edges so it reads as a selectable row rather than a
+       full-bleed band — the same shape as a fuzzel result. */
+    #tabbrowser-tabs[orient="vertical"] { --tab-min-height: 34px !important; }
     #tabbrowser-tabs[orient="vertical"] .tab-background {
       border-radius: var(--nx-radius) !important;
-      margin-block: 1px !important;
+      margin-block: 2px !important;
+      margin-inline: 4px !important;
+    }
+    #tabbrowser-tabs[orient="vertical"] .tab-content {
+      padding-inline: 10px !important;
     }
     #tabbrowser-tabs[orient="vertical"] .tabbrowser-tab:hover .tab-background:not([selected]) {
       background-color: var(--nx-raised) !important;
     }
+    /* Selection is the raised surface plus full-strength text, and nothing
+       else. This is the same call eww's device rows make (.dev.active) and for
+       the same reason: in a list where every row looks alike, one extra mark
+       on the selected row is the mark you end up looking at instead of the
+       row. The elevation step is the signal. */
     #tabbrowser-tabs[orient="vertical"] .tab-background[selected] {
       background-color: var(--nx-active) !important;
-      /* A 2px accent bar on the leading edge, the same width as niri's focus
-         ring. In a long vertical list the surface step alone is easy to lose;
-         this reuses the WM's own "you are here" mark instead of inventing a
-         second one. Inset shadow rather than a border so nothing reflows. */
-      box-shadow: inset 2px 0 0 0 var(--nx-accent) !important;
+      box-shadow: none !important;
     }
     #tabbrowser-tabs[orient="vertical"] .tabbrowser-tab:not([selected]) .tab-label {
       color: var(--nx-mute) !important;
+    }
+    #tabbrowser-tabs[orient="vertical"] .tabbrowser-tab[selected] .tab-label {
+      color: var(--nx-text) !important;
     }
     /* One close button per row, times twenty rows, is twenty ✕ glyphs asking
        for attention in a list you read by title. `visibility` rather than
@@ -428,9 +453,13 @@ let
     # nav bar the top of the window either way. Its window controls are hidden
     # in userChrome above.
     "browser.tabs.inTitlebar" = 1;
-    # Compact density. The default leaves the browser noticeably airier than
-    # waybar/eww/fuzzel next to it; compact brings the row heights in line.
-    "browser.uidensity" = 1;
+    # Normal density. This was 1 (compact) on the theory that the browser
+    # should match waybar's row heights — but waybar is a 34px strip and this
+    # is a full window, and compact on top of a 13px monospace chrome font left
+    # the toolbar visibly squeezed. Stated explicitly rather than dropped:
+    # prefs.js keeps whatever user.js last set, so removing the line would
+    # leave the old compact value in place instead of reverting it.
+    "browser.uidensity" = 0;
     "browser.compactmode.show" = true;
     # The bookmarks toolbar defaults to "newtab" — visible on the new-tab page
     # and nowhere else, so the whole page jumps down a row every time you open
