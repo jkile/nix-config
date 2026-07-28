@@ -849,6 +849,9 @@ in
       # Transparently use SSH for github.com even when a remote is an https URL.
       # Comment out if you'd rather clone with git@github.com:... explicitly.
       url."git@github.com:".insteadOf = "https://github.com/";
+      # Always merge on `git pull`, never rebase. Also silences the
+      # "divergent branches" hint git prints when this is unset.
+      pull.rebase = false;
     };
     # Use the work identity for anything under ~/code/overview.
     includes = [

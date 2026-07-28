@@ -6,7 +6,7 @@
 # these rules simply don't fire and PipeWire falls back to that machine's
 # built-in audio. Plug it into any host and the same profile pin, native rate
 # list, and latency/suspend tuning apply.
-{ ... }:
+{ pkgs, ... }:
 
 {
   # PipeWire, pinned explicitly rather than relying on COSMIC's implicit enable,
@@ -125,6 +125,65 @@
           };
         }
       ];
+    };
+  };
+
+  # ---- FIXED: Wine/Proton games crashing on startup (game_stereo) ----
+  # Symptom: every Wine/Proton game died ~12s after launch with no window. Looks
+  # exactly like a GPU fault and is not one.
+  #
+  # Cause: the ULN-8's multichannel sink is 12ch with an all-aux channel map
+  # (aux0..aux11) — no named speaker positions. Wine's PulseAudio driver maps
+  # channels onto *Windows speaker positions*, so an aux-only map yields a mask
+  # of zero and format negotiation fails outright:
+  #
+  #   fixme:pulse:get_channel_mask Unknown speaker configuration: 12
+  #   err:pulse:pulse_spec_from_waveformat Invalid channel mask: 0/12 and 0(0)
+  #   err:pulse:pulse_spec_from_waveformat Invalid format! Channel spec valid: 0, format: 5
+  #
+  # winepulse then returns null, FAudio does not null-check it, and the audio
+  # thread dereferences it ~2s later. Diagnosed 2026-07-27 on Elden Ring (Steam
+  # appid 1245620): 0xc0000005 at xaudio2_8+0xd15a, instruction `movq (%rcx),%rax`
+  # with rcx=0, on the FAudio_AudioClientThread. Native apps are unaffected —
+  # PipeWire happily remixes stereo onto aux channels by index; only Wine's
+  # strict position mapping trips on it.
+  #
+  # Fix: a 2ch FL/FR loopback sink feeding ULN outputs 1/2 unremixed, made the
+  # default so Wine's default-endpoint lookup finds a sane layout. The raw 12ch
+  # sink is untouched and still there for DAW/JACK work.
+  #
+  # Run as a standalone pw-loopback user service rather than a `context.modules`
+  # entry in the daemon config ON PURPOSE: daemon config only takes effect on a
+  # PipeWire daemon restart, which degrades this unit's ACP profile enumeration
+  # and forces a USB replug (see the node.latency notes above). A user service
+  # starts, stops, and rebuilds without touching the daemon.
+  #
+  # ROAMING: gated on the ULN's stable by-id control node so it no-ops on hosts
+  # where the interface isn't plugged in — without the gate, target.object would
+  # not resolve and the loopback would link to the default sink, which is itself
+  # (feedback loop). If you hotplug the ULN *after* login, this service will not
+  # pick it up on its own; start it by hand or wire up a udev SYSTEMD_USER_WANTS
+  # rule.
+  #
+  # NOT MEASURED: the latency cost of the extra graph hop, and whether routing
+  # all desktop audio through it moves the xrun figures documented above. If
+  # playback regresses, re-measure with pw-top before blaming anything else.
+  systemd.user.services.game-stereo-loopback = {
+    description = "Stereo (FL/FR) loopback sink feeding ULN-8 outputs 1/2";
+    after = [ "pipewire.service" ];
+    bindsTo = [ "pipewire.service" ];
+    wantedBy = [ "pipewire.service" ];
+    serviceConfig = {
+      ExecCondition = pkgs.writeShellScript "game-stereo-loopback-gate" ''
+        test -e /dev/snd/by-id/usb-Metric_Halo_ULN-8mkIV_49485_12x12-00
+      '';
+      ExecStart = pkgs.writeShellScript "game-stereo-loopback" ''
+        exec ${pkgs.pipewire}/bin/pw-loopback \
+          --capture-props='media.class=Audio/Sink node.name=game_stereo node.description="Stereo (ULN-8 1/2)" audio.position=[FL,FR] priority.session=2000' \
+          --playback-props='node.name=game_stereo.output node.passive=true stream.dont-remix=true audio.position=[AUX0,AUX1] target.object=alsa_output.usb-Metric_Halo_ULN-8mkIV_49485_12x12-00.multichannel-output'
+      '';
+      Restart = "on-failure";
+      RestartSec = 2;
     };
   };
 
