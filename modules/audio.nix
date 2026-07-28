@@ -172,7 +172,13 @@
     description = "Stereo (FL/FR) loopback sink feeding ULN-8 outputs 1/2";
     after = [ "pipewire.service" ];
     bindsTo = [ "pipewire.service" ];
-    wantedBy = [ "pipewire.service" ];
+    # Both targets on purpose. `pipewire.service` alone is a trap: systemd only
+    # pulls in a new Wants when the *wanting* unit starts, so on a host where
+    # PipeWire is already running (i.e. every `nixos-rebuild switch`) the unit
+    # is enabled but never started, and the only trigger would be a daemon
+    # restart — the exact thing this service exists to avoid. `default.target`
+    # gives it a login-time trigger; `bindsTo` still tears it down with PipeWire.
+    wantedBy = [ "pipewire.service" "default.target" ];
     serviceConfig = {
       ExecCondition = pkgs.writeShellScript "game-stereo-loopback-gate" ''
         test -e /dev/snd/by-id/usb-Metric_Halo_ULN-8mkIV_49485_12x12-00
