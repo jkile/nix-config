@@ -305,6 +305,7 @@ in
   imports = [
     inputs.zen-browser.homeModules.beta
     ./claude-code.nix # Claude Code CLI + declarative skills (settings.json left mutable)
+    ./codex.nix # Codex CLI, same split: shared ./agent-skills, config.toml left mutable
     ./firefox.nix # Firefox + the Nord userChrome/userContent that matches this session
   ];
 
