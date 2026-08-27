@@ -33,7 +33,7 @@
     "quiet" # `splash` is added automatically by the plymouth module
     "rd.udev.log_level=3"
     "udev.log_priority=3"
-    "pcie_ports=native"  # Enable PCIe native mode for better Thunderbolt support
+    "pcie_ports=native" # Enable PCIe native mode for better Thunderbolt support
   ];
 
   boot.initrd.systemd.emergencyAccess = true;
@@ -70,6 +70,7 @@
       "networkmanager"
       "wheel"
       "docker"
+      "kvm" # hardware acceleration for Android Studio's emulator
     ];
     packages = with pkgs; [ ];
     shell = pkgs.zsh;

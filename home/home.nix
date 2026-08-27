@@ -1,4 +1,5 @@
 {
+  config,
   pkgs,
   inputs,
   lib,
@@ -43,6 +44,22 @@ let
             "${pkgs.addDriverRunpath.driverLink}/share/vulkan/icd.d/radeon_icd.x86_64.json" \
           --add-flags "--disable-features=WaylandFractionalScaleV1"
       done
+    '';
+  };
+
+  # Android Studio 2025.3 still defaults to X11. Under niri its first-run
+  # Compose wizard hangs after the splash screen without ever mapping a window
+  # through Xwayland. JetBrains Runtime's native Wayland toolkit avoids that
+  # path; wrap the package rather than setting a Java-wide environment variable
+  # so Gradle and unrelated JVM applications keep their normal toolkit choice.
+  android-studio-wayland = pkgs.symlinkJoin {
+    name = "android-studio-wayland";
+    paths = [ pkgs.android-studio ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      rm -f "$out/bin/android-studio"
+      makeWrapper ${pkgs.android-studio}/bin/android-studio "$out/bin/android-studio" \
+        --add-flags "-Dawt.toolkit.name=WLToolkit"
     '';
   };
 
@@ -370,7 +387,20 @@ in
     obsidian # markdown notes (Electron; Wayland via the global NIXOS_OZONE_WL)
 
     k9s # Kubernetes terminal UI tool
+
+    # Android development. The nixpkgs wrapper gives Studio and its downloaded
+    # SDK/emulator binaries the FHS runtime they expect on NixOS; android-tools
+    # keeps adb/fastboot available from any shell, independent of the IDE.
+    android-studio-wayland
+    android-tools
   ];
+
+  # Android Studio's default writable SDK location. Export it so Gradle and
+  # command-line tools can find the SDK installed by the setup wizard without
+  # tying this config to one SDK/platform version. Do not prepend its binary
+  # directories here: the Nix-native android-tools should remain the shell's
+  # adb/fastboot, while Studio runs downloaded SDK binaries in its FHS wrapper.
+  home.sessionVariables.ANDROID_HOME = "${config.home.homeDirectory}/Android/Sdk";
 
   xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;
 
@@ -1071,7 +1101,7 @@ in
       shell-integration-features = "cursor,sudo,title";
       window-padding-x = 8;
       window-padding-y = 8;
-      background-opacity = 0.98;
+      background-opacity = 1;
       # Quick-launch the wired TUIs (types the command and runs it).
       keybind = [
         "ctrl+shift+o=text:ovw\\n" # zellij `overview` workspace
