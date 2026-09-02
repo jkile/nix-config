@@ -16,13 +16,20 @@
 # with Codex (see ./codex.nix) — the SKILL.md format is identical, so a skill
 # dropped in as <name>/SKILL.md shows up in both agents with no change here.
 #
-# The module installs pkgs.claude-code itself (via programs.claude-code.package),
-# so it's no longer listed in home.packages.
-{ ... }:
+# The module installs the package via programs.claude-code.package, so it's not
+# listed in home.packages. We build from pkgsUnstable's claude-code with a
+# vendored ./claude-code-manifest.json so the version isn't gated on nixpkgs
+# catching up. To bump: replace the manifest with
+#   curl -s https://downloads.claude.ai/claude-code-releases/<version>/manifest.json
+# (get <version> from `npm view @anthropic-ai/claude-code version`).
+{ lib, pkgsUnstable, ... }:
 
 {
   programs.claude-code = {
     enable = true;
+    package = pkgsUnstable.claude-code.override {
+      manifest = lib.importJSON ./claude-code-manifest.json;
+    };
     skills = ./agent-skills;
   };
 }
