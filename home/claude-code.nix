@@ -20,8 +20,9 @@
 # listed in home.packages. We build from pkgsUnstable's claude-code with a
 # vendored ./claude-code-manifest.json so the version isn't gated on nixpkgs
 # catching up. To bump: replace the manifest with
-#   curl -s https://downloads.claude.ai/claude-code-releases/<version>/manifest.json
-# (get <version> from `npm view @anthropic-ai/claude-code version`).
+#   curl -s https://downloads.claude.ai/claude-code-releases/<version>/manifest.zst.json
+# (the .zst variant: nixpkgs' claude-code now expects zstd-compressed binaries)
+# (get <version> from https://downloads.claude.ai/claude-code-releases/latest).
 { lib, pkgsUnstable, ... }:
 
 {
