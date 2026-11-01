@@ -11,17 +11,26 @@
 # `settings` option here would flip that trade-off — don't, unless you want the
 # model/theme pinned in Nix.
 #
-# Skills live as plain SKILL.md folders under ./claude/skills/ and are symlinked
-# (recursively, so per-file) into ~/.claude/skills/. To add a skill, drop a new
-# <name>/SKILL.md into that directory — no change needed here.
+# Skills live as plain SKILL.md folders under ./agent-skills/ and are symlinked
+# (recursively, so per-file) into ~/.claude/skills/. That directory is shared
+# with Codex (see ./codex.nix) — the SKILL.md format is identical, so a skill
+# dropped in as <name>/SKILL.md shows up in both agents with no change here.
 #
-# The module installs pkgs.claude-code itself (via programs.claude-code.package),
-# so it's no longer listed in home.packages.
-{ ... }:
+# The module installs the package via programs.claude-code.package, so it's not
+# listed in home.packages. We build from pkgsUnstable's claude-code with a
+# vendored ./claude-code-manifest.json so the version isn't gated on nixpkgs
+# catching up. To bump: replace the manifest with
+#   curl -s https://downloads.claude.ai/claude-code-releases/<version>/manifest.zst.json
+# (the .zst variant: nixpkgs' claude-code now expects zstd-compressed binaries)
+# (get <version> from https://downloads.claude.ai/claude-code-releases/latest).
+{ lib, pkgsUnstable, ... }:
 
 {
   programs.claude-code = {
     enable = true;
-    skills = ./claude/skills;
+    package = pkgsUnstable.claude-code.override {
+      manifest = lib.importJSON ./claude-code-manifest.json;
+    };
+    skills = ./agent-skills;
   };
 }

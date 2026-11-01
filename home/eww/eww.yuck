@@ -16,13 +16,15 @@
              :limit-width 32 :text desc)
       (label :class "dev-vol" :text "${vol}%"))))
 
+;; GTK3 CSS has no text-transform, so the letterspaced-caps treatment the
+;; .section rule assumes has to be spelled out at the call sites below.
 (defwidget section [title]
   (label :class "section" :halign "start" :text title))
 
 (defwidget audio-content []
   (box :class "audio-panel" :orientation "vertical" :space-evenly false :spacing 2
     ;; ---- Output ----
-    (section :title "Output")
+    (section :title "OUTPUT")
     (box :class "slider-row" :space-evenly false :spacing 8
       (button :class "mute-btn" :onclick "eww-audio-ctl toggle-sink-mute"
         (label :text {audio.sinkmute ? "" : ""}))
@@ -36,7 +38,7 @@
                 :active {s.name == audio.defsink} :cmd "set-sink")))
 
     ;; ---- Input ----
-    (section :title "Input")
+    (section :title "INPUT")
     (box :class "slider-row" :space-evenly false :spacing 8
       (button :class "mute-btn" :onclick "eww-audio-ctl toggle-source-mute"
         (label :text {audio.sourcemute ? "" : ""}))
@@ -50,7 +52,7 @@
                 :active {s.name == audio.defsource} :cmd "set-source")))
 
     ;; ---- Per-application ----
-    (section :title "Applications")
+    (section :title "APPLICATIONS")
     (box :class "applist" :orientation "vertical" :space-evenly false
       (label :class "empty" :visible {arraylength(audio.apps) == 0}
              :halign "start" :text "Nothing playing")

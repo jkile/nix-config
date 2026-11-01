@@ -1,34 +1,18 @@
 {
+  config,
   pkgs,
+  pkgsUnstable,
   inputs,
   lib,
   ...
 }:
 
 let
-  # Nord palette — https://www.nordtheme.com/
-  nord = {
-    # Polar Night (dark bases)
-    nord0 = "2E3440";
-    nord1 = "3B4252";
-    nord2 = "434C5E";
-    nord3 = "4C566A";
-    # Snow Storm (light text)
-    nord4 = "D8DEE9";
-    nord5 = "E5E9F0";
-    nord6 = "ECEFF4";
-    # Frost (blue/teal accents)
-    nord7 = "8FBCBB";
-    nord8 = "88C0D0";
-    nord9 = "81A1C1";
-    nord10 = "5E81AC";
-    # Aurora (colored accents)
-    nord11 = "BF616A"; # red
-    nord12 = "D08770"; # orange
-    nord13 = "EBCB8B"; # yellow
-    nord14 = "A3BE8C"; # green
-    nord15 = "B48EAD"; # purple
-  };
+  # Nord palette + the semantic UI tokens derived from it. Kept in its own file
+  # so the per-app modules imported below (firefox.nix) read the same values
+  # rather than carrying a second copy — see home/palette.nix for the reasoning
+  # behind the extended elevation and text ramps.
+  inherit (import ./palette.nix) nord ui;
 
   # Discord (Electron) hangs on the loading screen under niri because of the
   # wp-fractional-scale protocol — the renderer pegs a core forever. Disabling
@@ -61,6 +45,23 @@ let
             "${pkgs.addDriverRunpath.driverLink}/share/vulkan/icd.d/radeon_icd.x86_64.json" \
           --add-flags "--disable-features=WaylandFractionalScaleV1"
       done
+    '';
+  };
+
+  # Studio tracks nixpkgs-unstable: stable 26.05 lags a major release behind.
+  # Android Studio 2025.3+ defaults to X11. Under niri its first-run
+  # Compose wizard hangs after the splash screen without ever mapping a window
+  # through Xwayland. JetBrains Runtime's native Wayland toolkit avoids that
+  # path; wrap the package rather than setting a Java-wide environment variable
+  # so Gradle and unrelated JVM applications keep their normal toolkit choice.
+  android-studio-wayland = pkgs.symlinkJoin {
+    name = "android-studio-wayland";
+    paths = [ pkgsUnstable.android-studio ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      rm -f "$out/bin/android-studio"
+      makeWrapper ${pkgsUnstable.android-studio}/bin/android-studio "$out/bin/android-studio" \
+        --add-flags "-Dawt.toolkit.name=WLToolkit"
     '';
   };
 
@@ -120,11 +121,29 @@ let
   # ratios). To use your own image instead, point set-wallpaper's `awww img`
   # at a different path. runCommand's name ends in .png, so $out does too and
   # ImageMagick infers the PNG encoder from it.
+  # The old gradient ran nord0 -> nord2, which put the desktop at the same hue
+  # *and* nearly the same lightness as the panels floating on it — no figure/
+  # ground separation, so the bar had no edge to hold. This sits a full ramp step
+  # below surface1 so every panel reads as sitting above it.
+  #
+  # Three passes:
+  #   1. the diagonal base gradient, surface0 -> bg
+  #   2. a gentle radial multiply, so a 4K expanse doesn't read as flat fill
+  #   3. a dither of Gaussian noise
+  #
+  # (3) is not decoration. Dark gradients band badly at 8 bits — these values
+  # span about 7 levels per channel over 2160px, so without a dither you get
+  # visible concentric steps. Attenuation is deliberately low: 0.2 breaks the
+  # banding up and is invisible at 1:1, while 0.4 reads as film grain.
   nordWallpaper =
     pkgs.runCommand "nord-wallpaper.png" { nativeBuildInputs = [ pkgs.imagemagick ]; }
       ''
         magick -size 3840x2160 -define gradient:angle=135 \
-          gradient:'#2E3440'-'#434C5E' "$out"
+          gradient:'#${ui.surface0}'-'#${ui.bg}' \
+          \( -size 3840x2160 radial-gradient:'#FFFFFF'-'#C8C8C8' \) \
+          -compose Multiply -composite \
+          -attenuate 0.2 +noise Gaussian \
+          -depth 8 "$out"
       '';
 
   # Paints the wallpaper once awww-daemon is up. niri spawns the daemon and this
@@ -239,21 +258,6 @@ let
     '';
   };
 
-  # ---- Firefox profile settings (shared across profiles) ----
-  # Native vertical tabs + the revamped sidebar (Firefox 136+), the about:config
-  # warning off, strict tracking protection, and telemetry disabled. Applied to
-  # every profile in programs.firefox below.
-  firefoxSettings = {
-    "sidebar.verticalTabs" = true;
-    "sidebar.revamp" = true;
-    "browser.aboutConfig.showWarning" = false;
-    "browser.contentblocking.category" = "strict";
-    "datareporting.healthreport.uploadEnabled" = false;
-    "toolkit.telemetry.enabled" = false;
-    "browser.newtabpage.activity-stream.feeds.telemetry" = false;
-    "browser.newtabpage.activity-stream.telemetry" = false;
-  };
-
   # Web shortcuts launcher (Mod+G / the waybar 󰖟 button). A fuzzel dmenu of
   # bookmarks that each open in a chosen Firefox profile — the OS-level stand-in
   # for Arc/Zen's command bar + spaces. Edit the `entries` list to taste; the
@@ -320,6 +324,8 @@ in
   imports = [
     inputs.zen-browser.homeModules.beta
     ./claude-code.nix # Claude Code CLI + declarative skills (settings.json left mutable)
+    ./codex.nix # Codex CLI, same split: shared ./agent-skills, config.toml left mutable
+    ./firefox.nix # Firefox + the Nord userChrome/userContent that matches this session
   ];
 
   home.username = "jakek";
@@ -383,7 +389,20 @@ in
     obsidian # markdown notes (Electron; Wayland via the global NIXOS_OZONE_WL)
 
     k9s # Kubernetes terminal UI tool
+
+    # Android development. The nixpkgs wrapper gives Studio and its downloaded
+    # SDK/emulator binaries the FHS runtime they expect on NixOS; android-tools
+    # keeps adb/fastboot available from any shell, independent of the IDE.
+    android-studio-wayland
+    android-tools
   ];
+
+  # Android Studio's default writable SDK location. Export it so Gradle and
+  # command-line tools can find the SDK installed by the setup wizard without
+  # tying this config to one SDK/platform version. Do not prepend its binary
+  # directories here: the Nix-native android-tools should remain the shell's
+  # adb/fastboot, while Studio runs downloaded SDK binaries in its FHS wrapper.
+  home.sessionVariables.ANDROID_HOME = "${config.home.homeDirectory}/Android/Sdk";
 
   xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;
 
@@ -393,37 +412,41 @@ in
   # niri spawn-at-startup line.
   xdg.configFile."swayosd/style.css".text = ''
     window {
-      background-color: rgba(46, 52, 64, 0.92);
-      border: 1px solid rgba(76, 86, 106, 0.6);
-      border-radius: 16px;
+      background-color: rgba(35, 43, 54, 0.94);   /* surface1 */
+      border: 1px solid rgba(63, 74, 92, 0.7);    /* lineStrong */
+      border-radius: 12px;
       padding: 12px 16px;
     }
 
     #container { margin: 12px; }
 
     image, label {
-      color: #${nord.nord4};
+      color: #${ui.text};
     }
 
+    /* Thinner track than before: at 8px the bar read as a chunky widget, at 5px
+       it reads as a measurement. The fill is the accent because this popup
+       exists precisely to show one changing value. */
     progressbar {
-      min-height: 8px;
-      border-radius: 8px;
+      min-height: 5px;
+      border-radius: 3px;
       background: transparent;
     }
     trough {
-      min-height: 8px;
-      border-radius: 8px;
-      background-color: rgba(76, 86, 106, 0.5);
+      min-height: 5px;
+      border-radius: 3px;
+      background-color: #${ui.surface3};
     }
     progress {
-      min-height: 8px;
-      border-radius: 8px;
-      background-color: #${nord.nord8};
+      min-height: 5px;
+      border-radius: 3px;
+      background-color: #${ui.accent};
     }
 
-    /* Muted state — dim the fill and icon to nord3. */
-    progressbar:disabled progress { background-color: #${nord.nord3}; }
-    image:disabled, label:disabled { color: #${nord.nord3}; }
+    /* Muted — drop the fill out of the accent entirely so "muted" is legible at
+       a glance rather than being a slightly different blue. */
+    progressbar:disabled progress { background-color: #${ui.textFaint}; }
+    image:disabled, label:disabled { color: #${ui.textFaint}; }
   '';
 
   # swappy — screenshot annotation (Mod+Shift+S grabs a region into it). Saves
@@ -636,8 +659,15 @@ in
       };
     };
 
-    # Nord palette (matches the rest of this config). Translucent surfaces use
-    # rgba literals: nord0 = 46,52,64 · nord1 = 59,66,82 · nord3 = 76,86,106.
+    # Styling rules for this bar:
+    #  · Hierarchy comes from *lightness*, not hue. The clock is the brightest
+    #    thing; stats and metadata recede to textMute; everything at rest is
+    #    monochrome.
+    #  · Colour is semantic only. A module goes yellow/red/green because it is
+    #    telling you something, never because it looked nice. The previous bar
+    #    tinted seven modules seven different Nord hues, which meant none of
+    #    them registered as important.
+    #  · The accent belongs to the focused workspace and nothing else.
     style = ''
       * {
         font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font";
@@ -646,70 +676,80 @@ in
       }
 
       window#waybar {
-        background-color: rgba(46, 52, 64, 0.85);
-        border: 1px solid rgba(76, 86, 106, 0.6);
+        background-color: rgba(35, 43, 54, 0.88);   /* surface1 */
+        border: 1px solid rgba(63, 74, 92, 0.7);    /* lineStrong */
         border-radius: 12px;
-        color: #${nord.nord4};
+        color: #${ui.textDim};
       }
 
       #custom-webshortcuts, #workspaces, #window, #clock, #custom-media, #cpu, #memory,
       #custom-temp, #custom-nightlight, #custom-weather, #pulseaudio, #network,
       #custom-protonvpn, #tray {
-        padding: 0 10px;
-        margin: 4px 2px;
+        padding: 0 9px;
+        margin: 4px 1px;
       }
 
+      /* Workspaces — the only place the accent appears. */
       #workspaces button {
-        padding: 0 8px;
-        margin: 4px 2px;
-        color: #${nord.nord4};
+        padding: 0 9px;
+        margin: 4px 1px;
+        color: #${ui.textFaint};
         background: transparent;
         border-radius: 8px;
       }
       #workspaces button.active {
-        background-color: #${nord.nord10};
-        color: #${nord.nord6};
+        background-color: #${ui.accentDeep};
+        color: #${ui.text};
       }
       #workspaces button:hover {
-        background-color: rgba(76, 86, 106, 0.6);
+        background-color: #${ui.surface3};
+        color: #${ui.textDim};
       }
 
-      /* Web shortcuts launcher button — frost globe, subtle hover. */
-      #custom-webshortcuts { color: #${nord.nord8}; font-size: 15px; }
-      #custom-webshortcuts:hover { background-color: rgba(76, 86, 106, 0.6); }
+      #custom-webshortcuts { color: #${ui.textMute}; font-size: 15px; }
+      #custom-webshortcuts:hover {
+        background-color: #${ui.surface3};
+        color: #${ui.text};
+        border-radius: 8px;
+      }
 
-      #clock { color: #${nord.nord8}; font-weight: bold; }
-      #pulseaudio { color: #${nord.nord7}; }
-      #network { color: #${nord.nord9}; }
+      /* Clock is the anchor of the bar, so it gets the top of the text ramp.
+         Nerd Font is monospaced, so the digits already hold their column and
+         the bar never reflows on a minute tick. */
+      #clock {
+        color: #${ui.text};
+        letter-spacing: 0.02em;
+      }
 
-      /* Focused-window title — muted so it recedes behind the accents. */
-      #window { color: #${nord.nord4}; font-style: italic; }
+      /* Focused-window title — the quietest thing on the bar. Italic monospace
+         renders as a slanted upright in JetBrains Mono rather than a true
+         italic, so it just looks smeared; lightness does the recessing here. */
+      #window { color: #${ui.textMute}; }
 
-      /* Now-playing (purple), weather (frost). */
-      #custom-media { color: #${nord.nord15}; }
-      #custom-media.paused { color: #${nord.nord3}; font-style: italic; }
-      #custom-weather { color: #${nord.nord8}; }
+      /* Ambient readouts. Monochrome at rest — they are glanceable context, not
+         alerts, and they change often enough that colour would make the bar
+         twitch in peripheral vision. */
+      #pulseaudio, #network, #custom-weather, #custom-media, #cpu, #memory, #custom-temp {
+        color: #${ui.textMute};
+      }
+      #custom-media.paused { color: #${ui.textFaint}; }
 
-      /* System stats — green baseline; temp shifts to yellow/red by state. */
-      #cpu { color: #${nord.nord14}; }
-      #memory { color: #${nord.nord14}; }
-      #custom-temp { color: #${nord.nord14}; }
-      #custom-temp.warning { color: #${nord.nord13}; }
+      /* Thermals — the one ambient readout allowed to escalate. */
+      #custom-temp.warning { color: #${ui.warn}; }
       #custom-temp.critical {
-        color: #${nord.nord11};
+        color: #${ui.err};
         animation: blink 1s steps(2, start) infinite;
       }
 
-      /* Blue-light filter — warm yellow when active, dim when off. */
-      #custom-nightlight.on { color: #${nord.nord13}; }
-      #custom-nightlight.off { color: #${nord.nord3}; }
-
-      /* ProtonVPN — green when up, dim when down. */
-      #custom-protonvpn.connected { color: #${nord.nord14}; }
-      #custom-protonvpn.disconnected { color: #${nord.nord3}; }
+      /* Toggles: lit when on, faint when off. State reads as presence/absence
+         of light rather than as two competing colours. */
+      #custom-nightlight.on { color: #${ui.warn}; }
+      #custom-nightlight.off { color: #${ui.textFaint}; }
+      #custom-protonvpn.connected { color: #${ui.ok}; }
+      #custom-protonvpn.disconnected { color: #${ui.textFaint}; }
 
       @keyframes blink {
-        to { color: #${nord.nord6}; }
+        to { color: #${ui.text}; }
       }
     '';
   };
@@ -764,21 +804,26 @@ in
         image-size-ratio = 0.9;
       };
       border = {
-        # Thin, high-radius border feels more modern than a chunky one.
+        # 12px everywhere: niri's geometry-corner-radius, waybar, mako and this
+        # all share one radius so surfaces read as one system rather than four
+        # separately-tuned widgets.
         width = 1;
-        radius = 16;
+        radius = 12;
       };
       # fuzzel colors are RRGGBBAA hex with no leading '#'.
       colors = {
-        background = "${nord.nord0}f0";
-        text = "${nord.nord4}ff";
-        prompt = "${nord.nord8}ff";
-        input = "${nord.nord6}ff";
-        match = "${nord.nord8}ff";
-        selection = "${nord.nord3}ff";
-        selection-text = "${nord.nord6}ff";
-        selection-match = "${nord.nord8}ff";
-        border = "${nord.nord3}cc";
+        background = "${ui.surface1}f2";
+        text = "${ui.textDim}ff";
+        prompt = "${ui.accent}ff";
+        input = "${ui.text}ff";
+        # The fuzzy-match highlight is the one accent in the list. Selection is
+        # carried by the raised surface instead of by colour, so the highlight
+        # stays legible on both selected and unselected rows.
+        match = "${ui.accent}ff";
+        selection = "${ui.surface3}ff";
+        selection-text = "${ui.text}ff";
+        selection-match = "${ui.accent}ff";
+        border = "${ui.lineStrong}cc";
       };
     };
   };
@@ -790,12 +835,16 @@ in
     enable = true;
     settings = {
       font = "JetBrainsMono Nerd Font 11";
-      background-color = "#${nord.nord0}f2";
-      text-color = "#${nord.nord4}";
-      border-color = "#${nord.nord10}";
-      border-size = 2;
+      background-color = "#${ui.surface1}f2";
+      text-color = "#${ui.textDim}";
+      # A blue 2px border on *every* notification is decoration, and it competes
+      # with the urgent state for attention. Routine notifications get the same
+      # quiet hairline as every other floating surface; the border only turns
+      # colour when it has something to say (see urgency=high below).
+      border-color = "#${ui.lineStrong}";
+      border-size = 1;
       border-radius = 12;
-      progress-color = "over #${nord.nord3}";
+      progress-color = "over #${ui.surface3}";
       default-timeout = 5000;
       anchor = "top-right";
       margin = 12;
@@ -803,9 +852,11 @@ in
       width = 360;
       icons = true;
       max-icon-size = 48;
-      # Urgent notifications get a red (nord11) border and don't auto-dismiss.
+      # Urgent notifications get a red border and don't auto-dismiss. Now that
+      # the resting border is a neutral hairline, this actually stands out.
       "urgency=high" = {
-        border-color = "#${nord.nord11}";
+        border-color = "#${ui.err}";
+        border-size = 2;
         default-timeout = 0;
       };
     };
@@ -817,38 +868,9 @@ in
     enable = true;
   };
 
-  # Firefox — a declarative, OS-managed alternative to Arc/Zen. Two isolated
-  # profiles (personal default + work); native vertical tabs and the telemetry/
-  # privacy prefs come from firefoxSettings. Zen stays installed above as a
-  # fallback. Launch a specific profile from the web-shortcuts launcher,
-  # `firefox -P work`, or about:profiles.
-  programs.firefox = {
-    enable = true;
-    profiles = {
-      personal = {
-        id = 0;
-        isDefault = true;
-        settings = firefoxSettings;
-      };
-      work = {
-        id = 1;
-        settings = firefoxSettings;
-      };
-    };
-    # Enterprise policies apply to every profile: kill telemetry/Pocket and
-    # force-install uBlock Origin straight from AMO (no NUR or extra flake input
-    # needed). Add more add-ons by their extension ID + AMO latest-xpi URL.
-    policies = {
-      DisableTelemetry = true;
-      DisablePocket = true;
-      ExtensionSettings = {
-        "uBlock0@raymondhill.net" = {
-          installation_mode = "force_installed";
-          install_url = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
-        };
-      };
-    };
-  };
+  # programs.firefox lives in ./firefox.nix (imported above) — the userChrome /
+  # userContent stylesheets that make it match the session are long enough to
+  # warrant their own file.
 
   programs.git = {
     enable = true;
@@ -860,6 +882,9 @@ in
       # Transparently use SSH for github.com even when a remote is an https URL.
       # Comment out if you'd rather clone with git@github.com:... explicitly.
       url."git@github.com:".insteadOf = "https://github.com/";
+      # Always merge on `git pull`, never rebase. Also silences the
+      # "divergent branches" hint git prints when this is unset.
+      pull.rebase = false;
     };
     # Use the work identity for anything under ~/code/overview.
     includes = [
@@ -1078,7 +1103,7 @@ in
       shell-integration-features = "cursor,sudo,title";
       window-padding-x = 8;
       window-padding-y = 8;
-      background-opacity = 0.98;
+      background-opacity = 1;
       # Quick-launch the wired TUIs (types the command and runs it).
       keybind = [
         "ctrl+shift+o=text:ovw\\n" # zellij `overview` workspace

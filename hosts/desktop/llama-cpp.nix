@@ -11,6 +11,7 @@
 {
   pkgs,
   lib,
+  inputs,
   ...
 }:
 
@@ -21,13 +22,21 @@ let
   # both the service and the CLI tools have to be the *same* build; pointing
   # services.llama-cpp.package at a plain pkgs.llama-cpp would silently give you
   # a CPU-only server.
-  llamaCppVulkan = pkgs.llama-cpp.override { vulkanSupport = true; };
+  # Qwen3.8 landed after the llama.cpp build in nixos-26.05 (b9190). The
+  # already-pinned unstable input carries b10273, so use only its llama.cpp
+  # package rather than moving the whole host to unstable.
+  llamaCppVulkan =
+    inputs.nixpkgs-unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.llama-cpp.override
+      { vulkanSupport = true; };
 
   port = 8080;
 
   # The router publishes each preset under its INI section name *and* its alias
   # (verified against `GET /v1/models`). qwen-code is pointed at the alias below.
-  modelAlias = "qwen3-coder-30b";
+  # qwen-code 0.16 treats qwen3.<digit> names as hosted models with a 1M-token
+  # context. The hyphenated version still identifies the model clearly but
+  # follows its generic Qwen path, whose 256K limit matches this local server.
+  modelAlias = "qwen3-8-27b";
 
   # Qwen Code speaks the OpenAI API, so it's configured through OPENAI_* env
   # vars. Those are deliberately baked into a wrapper instead of
@@ -111,60 +120,66 @@ in
     # router mode: nothing is loaded until a request names this model, and
     # weights are fetched from Hugging Face into LLAMA_CACHE
     # (/var/cache/llama-cpp, created by the unit's CacheDirectory) on first use.
-    # That first request pays a ~16.5 GB download — `systemctl status llama-cpp`
+    # That first request pays a ~16.7 GiB download — `systemctl status llama-cpp`
     # or `journalctl -fu llama-cpp` to watch it.
     #
     # Keys are llama-server long flags minus the leading `--`, values are
     # strings because the module renders this straight to INI.
-    modelsPreset."Qwen3-Coder-30B-A3B" = {
-      # Qwen3-Coder-30B-A3B-Instruct — a 30B MoE with only 3B active params.
-      # NB this is *not* Qwen3-Coder-Next, which despite the similar name is an
-      # 80B MoE that would not fit in 32 GB without spilling experts to RAM.
-      #
-      # UD-Q4_K_XL (16.5 GB) is Unsloth's recommendation for a ~32 GB card.
-      # UD-Q5_K_XL (20.2 GB) also fits alongside the cache below if you want
-      # more fidelity; UD-Q6_K_XL (24.5 GB) does not at this context length.
-      hf-repo = "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF";
-      hf-file = "Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf";
+    modelsPreset."Qwen3.8-27B" = {
+      # Qwen3.8-27B is the dense, hybrid-attention release. Unsloth's
+      # UD-Q4_K_XL is 16.69 GiB, leaving enough of the 32 GiB card for the
+      # quantized cache and Vulkan compute buffers at the native context size.
+      # UD-Q5_K_XL is 18.83 GiB and is the next fidelity step if real-world
+      # measurements show enough headroom; Q6 at 24.14 GiB is too tight here.
+      hf-repo = "unsloth/Qwen3.8-27B-GGUF";
+      hf-file = "Qwen3.8-27B-UD-Q4_K_XL.gguf";
       alias = modelAlias;
 
       # Full offload — the whole model lives on the GPU. 99 rather than a real
       # layer count is the idiomatic "all of them".
       n-gpu-layers = "99";
 
-      # 128K context. This number is not free choice — qwen-code assumes
-      # DEFAULT_TOKEN_LIMIT = 131072 for any model name it doesn't recognize and
-      # never asks the server how much context it actually has, so a smaller
-      # value here would let it silently overflow the window mid-session.
+      # The model's native 256K context. qwen-code assigns generic Qwen aliases
+      # this same limit; see modelAlias above for why the literal dotted model
+      # name is not used at the API boundary.
       #
-      # The KV cache, not the weights, is what makes that expensive: 48 layers x
-      # 4 KV heads x 128 dim comes to ~96 KiB/token at f16, so 128K would want
-      # ~12 GiB. Quantizing the cache to q8_0 roughly halves it to ~6.5 GiB,
-      # which puts the total at ~23 GB of the 32 GB available. Quantized V
-      # requires flash attention, hence -fa on; verified working on RADV.
-      ctx-size = "131072";
+      # Only every fourth layer uses full attention (16 of 64), so its q8 KV
+      # cache is about 8 GiB at 256K rather than the much larger cache a pure
+      # transformer of this size would need. Quantized V requires flash
+      # attention, hence -fa on.
+      ctx-size = "262144";
       cache-type-k = "q8_0";
       cache-type-v = "q8_0";
       flash-attn = "on";
+
+      # This GGUF includes Qwen's MTP prediction head. Native speculative
+      # decoding verifies every drafted token against the full model, so it can
+      # improve generation speed without changing the result distribution.
+      # Three draft tokens is llama.cpp's conservative default for this family.
+      spec-type = "draft-mtp";
+      spec-draft-n-max = "3";
 
       # Qwen ships a chat template with tool-call support; the agent loop in
       # `qwen` depends on it, so jinja is not optional here.
       jinja = "on";
 
-      # Qwen's published sampling recommendations for this model. It's a
-      # non-thinking model — it emits no <think> blocks.
-      temp = "0.7";
-      top-p = "0.8";
+      # Qwen's published defaults for thinking mode, which is the right fit for
+      # an agentic coding CLI. The model's template keeps reasoning separate
+      # from the final response on the OpenAI-compatible endpoint.
+      temp = "1.0";
+      top-p = "0.95";
       top-k = "20";
       min-p = "0.0";
-      repeat-penalty = "1.05";
+      presence-penalty = "0.0";
+      repeat-penalty = "1.0";
     };
 
     # Global flags; the router merges these into each preset it spawns.
     extraFlags = [
       # Release the GPU after 15 min idle, so a forgotten `qwen` session isn't
-      # holding ~23 GB of VRAM when a game starts. The next request reloads from
-      # the local cache. `systemctl stop llama-cpp` to free it immediately.
+      # holding most of the card's VRAM when a game starts. The next request
+      # reloads from the local cache. `systemctl stop llama-cpp` to free it
+      # immediately.
       "--sleep-idle-seconds"
       "900"
     ];
