@@ -18,11 +18,18 @@
   config,
   pkgs,
   lib,
+  inputs,
   ...
 }:
 
 {
-  imports = [ ./hardware-configuration.nix ]; # generated on the laptop (step 1)
+  imports = [
+    ./hardware-configuration.nix # generated on the laptop (step 1)
+    # Framework 13 Pro — Intel Core Ultra Series 3 (Panther Lake). Brings fwupd,
+    # a new-enough kernel, nvme/s2idle power fixes, fprintd, and the EC tools.
+    # If `lscpu` on the laptop says AMD instead, swap for framework-amd-ai-300-series.
+    inputs.nixos-hardware.nixosModules.framework-intel-core-ultra-series3
+  ];
 
   networking.hostName = "jakek-laptop"; # TODO: set the real hostname
 
@@ -33,11 +40,15 @@
     enable = true;
     enable32Bit = true;
   };
-  #
-  # Intel iGPU:
-  #   hardware.graphics.extraPackages = with pkgs; [ intel-media-driver libvdpau-va-gl ];
-  #   environment.variables.LIBVA_DRIVER_NAME = "iHD";
-  #   services.thermald.enable = true;   # Intel thermal management daemon
+  # Intel Xe3 iGPU: iHD is the VA-API driver for Gen12+; thermald manages
+  # Intel thermal limits. `vainfo` (libva-utils) verifies HW video decode.
+  hardware.graphics.extraPackages = with pkgs; [
+    intel-media-driver
+    libva-utils
+    libvdpau-va-gl
+  ];
+  environment.variables.LIBVA_DRIVER_NAME = "iHD";
+  services.thermald.enable = true;
   #
   # AMD (APU / Radeon) — mirror the desktop:
   #   hardware.graphics.extraPackages = with pkgs; [ libva-utils libvdpau-va-gl ];
