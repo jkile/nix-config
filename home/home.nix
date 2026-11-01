@@ -418,12 +418,17 @@ in
             scale 1.5
         }
 
+        // An included touchpad/mouse block replaces config.kdl's whole block
+        // rather than merging into it, so repeat the shared settings here.
         input {
             touchpad {
-                accel-speed 0.75
+                tap
+                natural-scroll
+                accel-speed 0.65
             }
             mouse {
-                accel-speed 0.75
+                natural-scroll
+                accel-speed 0.65
             }
         }
       ''
