@@ -73,7 +73,7 @@
         # Laptop — uncomment once hosts/laptop/hardware-configuration.nix exists
         # and the laptop's host key is in .sops.yaml. See hosts/laptop/default.nix
         # for the full bootstrap checklist.
-        # jakek-laptop = mkHost ./hosts/laptop;
+        jakek-laptop = mkHost ./hosts/laptop;
       };
 
       # `nix fmt`, and used by `nix flake check` to verify formatting.

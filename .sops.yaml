@@ -15,6 +15,7 @@ keys:
   - &admin_jakek age1whmz44htegdkj6ta5yackgxv852cq75nawz3r2hqege98tqmdvaq9d4e42
   # this machine — `ssh-to-age < /etc/ssh/ssh_host_ed25519_key.pub`
   - &host_jakek age18xmrfllfxkmsaudzu6jkds8h24qdc9um3wqcjdym6hs3tqqu832qasm8f7
+  - &host_jakek_laptop age19puvvs87e7s8he63ag7kk4lp6gn609zysewsngfzqgalx87j3v8s5sswl7
 
 creation_rules:
   - path_regex: secrets/[^/]+\.(yaml|json)$
@@ -22,3 +23,4 @@ creation_rules:
       - age:
           - *admin_jakek
           - *host_jakek
+          - *host_jakek_laptop
