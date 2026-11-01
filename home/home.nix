@@ -1,5 +1,6 @@
 {
   config,
+  osConfig,
   pkgs,
   pkgsUnstable,
   inputs,
@@ -405,6 +406,29 @@ in
   home.sessionVariables.ANDROID_HOME = "${config.home.homeDirectory}/Android/Sdk";
 
   xdg.configFile."niri/config.kdl".source = ./niri/config.kdl;
+  # Pulled in by the `include` at the end of config.kdl. It's generated on every
+  # host because niri won't start if an included file is missing; the desktop's
+  # copy is empty.
+  xdg.configFile."niri/host.kdl".text =
+    if osConfig.networking.hostName == "jakek-laptop" then
+      ''
+        // Framework 13 internal panel (2880x1920 -> 1920x1280 logical). 1.5 divides
+        // the panel evenly, so niri can render it without rounding.
+        output "eDP-1" {
+            scale 1.5
+        }
+
+        input {
+            touchpad {
+                accel-speed 0.75
+            }
+            mouse {
+                accel-speed 0.75
+            }
+        }
+      ''
+    else
+      "// No overrides for this host.\n";
 
   # SwayOSD volume/mute popup — Nord styling to match waybar/mako/fuzzel:
   # the same floating, rounded, translucent dark surface with a frost-blue
