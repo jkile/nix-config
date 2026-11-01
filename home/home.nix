@@ -1,6 +1,7 @@
 {
   config,
   pkgs,
+  pkgsUnstable,
   inputs,
   lib,
   ...
@@ -47,18 +48,19 @@ let
     '';
   };
 
-  # Android Studio 2025.3 still defaults to X11. Under niri its first-run
+  # Studio tracks nixpkgs-unstable: stable 26.05 lags a major release behind.
+  # Android Studio 2025.3+ defaults to X11. Under niri its first-run
   # Compose wizard hangs after the splash screen without ever mapping a window
   # through Xwayland. JetBrains Runtime's native Wayland toolkit avoids that
   # path; wrap the package rather than setting a Java-wide environment variable
   # so Gradle and unrelated JVM applications keep their normal toolkit choice.
   android-studio-wayland = pkgs.symlinkJoin {
     name = "android-studio-wayland";
-    paths = [ pkgs.android-studio ];
+    paths = [ pkgsUnstable.android-studio ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
     postBuild = ''
       rm -f "$out/bin/android-studio"
-      makeWrapper ${pkgs.android-studio}/bin/android-studio "$out/bin/android-studio" \
+      makeWrapper ${pkgsUnstable.android-studio}/bin/android-studio "$out/bin/android-studio" \
         --add-flags "-Dawt.toolkit.name=WLToolkit"
     '';
   };
