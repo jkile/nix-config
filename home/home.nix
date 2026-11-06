@@ -867,6 +867,9 @@ in
       indicator-thickness = 8;
       show-failed-attempts = true;
       ignore-empty-password = true;
+      # Without this the ring only appears once you start typing, so the lock
+      # screen is a bare ui.bg rectangle that reads as a frozen gray screen.
+      indicator-idle-visible = true;
 
       inside-color = "${ui.surface1}ee";
       inside-clear-color = "${ui.surface1}ee";

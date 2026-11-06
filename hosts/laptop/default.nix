@@ -49,14 +49,6 @@
   ];
   environment.variables.LIBVA_DRIVER_NAME = "iHD";
   services.thermald.enable = true;
-  # Panel Self Refresh freezes the panel after s2idle resume: the system and
-  # input are alive (power key still suspends), but the screen stays on the last
-  # frame — swaylock's plain nord1 background before its indicator draws — so it
-  # looks like an unresponsive gray screen. Every boot also logs
-  #   xe 0000:00:02.0: [drm] Selective fetch area calculation failed in pipe A
-  # Costs a little idle battery. Revisit on a newer kernel (6.18.43 at time of
-  # writing); `xe.enable_psr2_sel_fetch=0` is the narrower thing to try first.
-  boot.kernelParams = [ "xe.enable_psr=0" ];
   #
   # AMD (APU / Radeon) — mirror the desktop:
   #   hardware.graphics.extraPackages = with pkgs; [ libva-utils libvdpau-va-gl ];
