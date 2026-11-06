@@ -26,6 +26,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
+    # Noctalia desktop shell (bar, launcher, notifications, OSD, lock screen) for
+    # the niri session. The `cachix` branch only ever points at commits CI has
+    # already pushed to noctalia.cachix.org, and nixpkgs is deliberately NOT
+    # followed: overriding it changes the derivation hash and misses the cache,
+    # forcing a local C++ build.
+    noctalia.url = "github:noctalia-dev/noctalia/cachix";
   };
 
   outputs =

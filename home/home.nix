@@ -329,6 +329,7 @@ in
 {
   imports = [
     inputs.zen-browser.homeModules.beta
+    inputs.noctalia.homeModules.default
     ./claude-code.nix # Claude Code CLI + declarative skills (settings.json left mutable)
     ./codex.nix # Codex CLI, same split: shared ./agent-skills, config.toml left mutable
     ./firefox.nix # Firefox + the Nord userChrome/userContent that matches this session
@@ -500,6 +501,41 @@ in
 
   # Make sure the screenshot folder exists so both niri and swappy can write it.
   home.file."Pictures/Screenshots/.keep".text = "";
+
+  # Noctalia — trial desktop shell. In the niri session it takes over from
+  # waybar (bar), mako (notifications), swayosd (OSD), eww (Mod+A → control
+  # center), awww (wallpaper) and swayidle+swaylock (lock screen); see the
+  # spawn-at-startup block in niri/config.kdl. Those tools stay installed and
+  # configured below so going back is just reverting the niri spawns/binds.
+  #
+  # Started by niri's spawn-at-startup rather than systemd.enable, matching how
+  # the rest of the session is launched. This file is the declarative base
+  # layer; anything changed in Noctalia's Settings UI is saved on top of it in
+  # ~/.local/state/noctalia/settings.toml (and wins over this file until deleted).
+  programs.noctalia = {
+    enable = true;
+    settings = {
+      theme = {
+        mode = "dark";
+        source = "builtin";
+        builtin = "Nord";
+      };
+      # Same face as the rest of the session chrome (waybar, fuzzel, mako, eww).
+      shell.font_family = "JetBrainsMono Nerd Font";
+      # The same generated Nord gradient awww painted; also backs the lock screen.
+      wallpaper = {
+        enabled = true;
+        default.path = "${nordWallpaper}";
+      };
+      lockscreen = {
+        enabled = true;
+        lock_before_suspend = true; # replaces `swayidle -w before-sleep`
+        # Password only, same reasoning as swaylock's fprintAuth = false in
+        # modules/common.nix: with fingerprint in the stack, unlock waits on fprintd.
+        fingerprint = false;
+      };
+    };
+  };
 
   # eww — the audio control panel HUD (Mod+A, or click the waybar volume
   # module). Config lives as readable files in home/eww/; the module writes

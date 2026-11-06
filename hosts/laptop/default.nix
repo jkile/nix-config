@@ -71,6 +71,8 @@
 
   services.logind.lidSwitch = "suspend";
   hardware.bluetooth.enable = true;
+  # Battery state over D-Bus for Noctalia's battery widget / low-battery warnings.
+  services.upower.enable = true;
 
   # The Intel PCIe Bluetooth controller (btintel_pcie) refuses to enter D3, which
   # aborts every suspend: the lid closes, suspend fails twice (~4s each) and the

@@ -301,22 +301,23 @@ layout {
 // which may be more convenient to use.
 // See the binds section below for more spawn examples.
 
-// waybar: status bar. mako: notification daemon. swayosd-server: the
-// daemon behind the volume/mute on-screen popup. All niri-session only
-// (COSMIC provides its own), so they live here rather than as always-on
-// systemd user services. swayosd gets an explicit --style so it always
-// picks up the Nord stylesheet regardless of XDG lookup order.
-spawn-at-startup "waybar"
-spawn-at-startup "mako"
-spawn-sh-at-startup "swayosd-server --style $HOME/.config/swayosd/style.css"
-// eww daemon for the audio control panel (Mod+A / click the volume module).
-// Started here so its deflisten audio state is warm before first open.
-spawn-at-startup "eww" "daemon"
+// Noctalia (programs.noctalia in home.nix): bar, launcher, notifications,
+// volume/brightness OSD, control center, wallpaper and lock screen in one
+// process. niri-session only (COSMIC provides its own), so it lives here
+// rather than as an always-on systemd user service.
+spawn-at-startup "noctalia"
 
-// awww (swww fork): animated wallpaper daemon + the Nord-gradient painter.
-// set-wallpaper (home.nix) waits for the daemon's socket, then fades it in.
-spawn-at-startup "awww-daemon"
-spawn-at-startup "set-wallpaper"
+// Pre-Noctalia stack, kept for a quick rollback: uncomment these, the swayidle
+// line below, and the old binds (marked "pre-Noctalia"), then drop the
+// noctalia spawn above.
+//   waybar: status bar. mako: notifications. swayosd-server: volume OSD.
+//   eww: audio panel (Mod+A). awww + set-wallpaper: the Nord gradient.
+// spawn-at-startup "waybar"
+// spawn-at-startup "mako"
+// spawn-sh-at-startup "swayosd-server --style $HOME/.config/swayosd/style.css"
+// spawn-at-startup "eww" "daemon"
+// spawn-at-startup "awww-daemon"
+// spawn-at-startup "set-wallpaper"
 
 // cliphist clipboard history: one watcher per MIME class feeds the store that
 // Mod+Shift+C reads back. wl-paste/cliphist are on PATH via home.packages.
@@ -329,11 +330,12 @@ spawn-sh-at-startup "wl-paste --type image --watch cliphist store"
 // the wlr-gamma-control protocol that niri implements.
 spawn-at-startup "nightlight" "start"
 
-// Screen lock: swayidle holds a sleep inhibitor so the lock is drawn *before*
-// suspend (-w waits for it), so opening the lid lands on swaylock rather than
-// the unlocked session. `lock` handles `loginctl lock-session` (Mod+Alt+L and
-// the power menu). swaylock's look is set in home.nix.
-spawn-at-startup "swayidle" "-w" "before-sleep" "swaylock -f" "lock" "swaylock -f"
+// Screen lock: Noctalia's lock screen now does both jobs swayidle did. With
+// lock_before_suspend it holds a logind sleep-delay inhibitor and locks before
+// suspend (lid close included), and it answers logind's lock signal, so
+// `loginctl lock-session` (the power menu) still works.
+// pre-Noctalia: swayidle -w waited on swaylock before sleep and handled `lock`.
+// spawn-at-startup "swayidle" "-w" "before-sleep" "swaylock -f" "lock" "swaylock -f"
 
 // To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
 // spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
@@ -446,6 +448,21 @@ window-rule {
     open-floating true
 }
 
+// Noctalia's settings window (Mod+Shift+Comma) floats at a fixed size instead
+// of tiling into a column.
+window-rule {
+    match app-id=r#"^dev\.noctalia\.Noctalia$"#
+    open-floating true
+    default-column-width { fixed 1080; }
+    default-window-height { fixed 920; }
+}
+
+// Lets Noctalia's notification actions and window activation focus the target
+// window; without it niri drops those xdg-activation requests.
+debug {
+    honor-xdg-activation-with-invalid-serial
+}
+
 // Example: block out two password managers from screen capture.
 // (This example rule is commented out with a "/-" in front.)
 /-window-rule {
@@ -483,9 +500,12 @@ binds {
 
     // Suggested binds for running programs: terminal, app launcher.
     Mod+T hotkey-overlay-title="Open a Terminal: ghostty" { spawn "ghostty"; }
-    Mod+D hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
-    Mod+Space hotkey-overlay-title="Run an Application: fuzzel" { spawn "fuzzel"; }
-    Mod+A hotkey-overlay-title="Audio control panel" { spawn "eww" "open" "--toggle" "audio-panel"; }
+    // pre-Noctalia: Mod+D / Mod+Space spawned "fuzzel"; Mod+A toggled the eww
+    // audio-panel. fuzzel stays installed for the dmenu pickers below.
+    Mod+D hotkey-overlay-title="Run an Application: Noctalia" { spawn "noctalia" "msg" "panel-toggle" "launcher"; }
+    Mod+Space hotkey-overlay-title="Run an Application: Noctalia" { spawn "noctalia" "msg" "panel-toggle" "launcher"; }
+    Mod+A hotkey-overlay-title="Control center" { spawn "noctalia" "msg" "panel-toggle" "control-center"; }
+    Mod+Shift+Comma hotkey-overlay-title="Noctalia settings" { spawn "noctalia" "msg" "settings-toggle"; }
 
     // Clipboard history picker (fuzzel dmenu over cliphist).
     Mod+Shift+C hotkey-overlay-title="Clipboard history" { spawn "clipboard-history"; }
@@ -506,26 +526,24 @@ binds {
     // For example, this is a standard bind to toggle the screen reader (orca).
     Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh "pkill orca || exec orca"; }
 
-    // Volume/mute via swayosd-client, so each press shows the Nord OSD popup
-    // (swayosd-server, spawned above, does the actual wpctl work). --max-volume
-    // caps the sink at 100%. allow-when-locked keeps them working when locked.
-    XF86AudioRaiseVolume allow-when-locked=true { spawn "swayosd-client" "--output-volume" "raise" "--max-volume" "100"; }
-    XF86AudioLowerVolume allow-when-locked=true { spawn "swayosd-client" "--output-volume" "lower"; }
-    XF86AudioMute        allow-when-locked=true { spawn "swayosd-client" "--output-volume" "mute-toggle"; }
-    XF86AudioMicMute     allow-when-locked=true { spawn "swayosd-client" "--input-volume" "mute-toggle"; }
+    // Volume/mute/media/brightness via Noctalia IPC, so each press shows its
+    // Nord OSD. Volume caps at 100% ([audio].enable_overdrive defaults off).
+    // allow-when-locked keeps them working on the lock screen.
+    // pre-Noctalia: swayosd-client --output-volume raise --max-volume 100 /
+    // lower / mute-toggle, --input-volume mute-toggle, --playerctl play-pause /
+    // stop / prev / next; brightnessctl --class=backlight set +10% / 10%-.
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "noctalia" "msg" "volume-up"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "noctalia" "msg" "volume-down"; }
+    XF86AudioMute        allow-when-locked=true { spawn "noctalia" "msg" "volume-mute"; }
+    XF86AudioMicMute     allow-when-locked=true { spawn "noctalia" "msg" "mic-mute"; }
 
-    // Media keys via swayosd-client --playerctl: same MPRIS control as before,
-    // now with an OSD popup showing the track/action.
-    XF86AudioPlay        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "play-pause"; }
-    XF86AudioStop        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "stop"; }
-    XF86AudioPrev        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "prev"; }
-    XF86AudioNext        allow-when-locked=true { spawn "swayosd-client" "--playerctl" "next"; }
+    XF86AudioPlay        allow-when-locked=true { spawn "noctalia" "msg" "media" "toggle"; }
+    XF86AudioStop        allow-when-locked=true { spawn "noctalia" "msg" "media" "stop"; }
+    XF86AudioPrev        allow-when-locked=true { spawn "noctalia" "msg" "media" "previous"; }
+    XF86AudioNext        allow-when-locked=true { spawn "noctalia" "msg" "media" "next"; }
 
-    // Example brightness key mappings for brightnessctl.
-    // You can use regular spawn with multiple arguments too (to avoid going through "sh"),
-    // but you need to manually put each argument in separate "" quotes.
-    XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "+10%"; }
-    XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "10%-"; }
+    XF86MonBrightnessUp   allow-when-locked=true { spawn "noctalia" "msg" "brightness-up"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "noctalia" "msg" "brightness-down"; }
 
     // Open/close the Overview: a zoomed-out view of workspaces and windows.
     // You can also move the mouse into the top-left hot corner,
@@ -766,8 +784,9 @@ binds {
     // moving the mouse or pressing any other key.
     Mod+Shift+P { power-off-monitors; }
 
-    // Lock the screen (swayidle's `lock` handler runs swaylock).
-    Mod+Alt+L hotkey-overlay-title="Lock the screen" { spawn "loginctl" "lock-session"; }
+    // Lock the screen with Noctalia's lock screen.
+    // pre-Noctalia: spawn "loginctl" "lock-session" (swayidle's `lock` handler).
+    Mod+Alt+L hotkey-overlay-title="Lock the screen" { spawn "noctalia" "msg" "session" "lock"; }
 }
 
 // Per-host overrides (output scale, pointer speed), generated by home.nix from
