@@ -49,6 +49,14 @@
   ];
   environment.variables.LIBVA_DRIVER_NAME = "iHD";
   services.thermald.enable = true;
+  # Panel Self Refresh freezes the panel after s2idle resume: the system and
+  # input are alive (power key still suspends), but the screen stays on the last
+  # frame — swaylock's plain nord1 background before its indicator draws — so it
+  # looks like an unresponsive gray screen. Every boot also logs
+  #   xe 0000:00:02.0: [drm] Selective fetch area calculation failed in pipe A
+  # Costs a little idle battery. Revisit on a newer kernel (6.18.43 at time of
+  # writing); `xe.enable_psr2_sel_fetch=0` is the narrower thing to try first.
+  boot.kernelParams = [ "xe.enable_psr=0" ];
   #
   # AMD (APU / Radeon) — mirror the desktop:
   #   hardware.graphics.extraPackages = with pkgs; [ libva-utils libvdpau-va-gl ];
@@ -71,6 +79,16 @@
 
   services.logind.lidSwitch = "suspend";
   hardware.bluetooth.enable = true;
+
+  # The Intel PCIe Bluetooth controller (btintel_pcie) refuses to enter D3, which
+  # aborts every suspend: the lid closes, suspend fails twice (~4s each) and the
+  # machine stays awake with the screen off:
+  #   Bluetooth: hci0: Timeout (3000 ms) on alive interrupt for D3 entry
+  #   btintel_pcie 0000:00:14.7: PM: failed to suspend async: error -16
+  # Unloading the driver before sleep and reloading it on wake sidesteps it.
+  # Revisit on a newer kernel (6.18.43 at time of writing).
+  powerManagement.powerDownCommands = "${pkgs.kmod}/bin/modprobe -r btintel_pcie || true";
+  powerManagement.resumeCommands = "${pkgs.kmod}/bin/modprobe btintel_pcie || true";
 
   # ---- TRIM ----
   # Once you know the laptop's LUKS device name from the generated

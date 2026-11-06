@@ -15,6 +15,9 @@ let
   # behind the extended elevation and text ramps.
   inherit (import ./palette.nix) nord ui;
 
+  # Laptop-only bits: niri's host.kdl overrides and the waybar battery module.
+  isLaptop = osConfig.networking.hostName == "jakek-laptop";
+
   # Discord (Electron) hangs on the loading screen under niri because of the
   # wp-fractional-scale protocol — the renderer pegs a core forever. Disabling
   # WaylandFractionalScaleV1 fixes it, and since our output is integer-scaled
@@ -183,9 +186,10 @@ let
 
   # Power menu (Mod+Shift+E). A fuzzel dmenu of session actions. Log out uses
   # niri's own quit; Ctrl+Alt+Delete stays wired to the raw quit-with-
-  # confirmation in config.kdl as an escape hatch. No Lock entry yet — add one
-  # once a screen locker is in the config. `|| chosen=""` swallows the non-zero
-  # exit when the menu is dismissed so nothing fires.
+  # confirmation in config.kdl as an escape hatch. Lock goes through
+  # `loginctl lock-session` so swayidle's handler is the one place that runs
+  # swaylock. `|| chosen=""` swallows the non-zero exit when the menu is
+  # dismissed so nothing fires.
   powerMenu = pkgs.writeShellApplication {
     name = "power-menu";
     runtimeInputs = [
@@ -193,9 +197,10 @@ let
       pkgs.systemd
     ];
     text = ''
-      chosen=$(printf '%s\n' "󰗽  Log out" "󰤄  Suspend" "󰜉  Reboot" "󰐥  Shut down" \
-        | fuzzel --dmenu --prompt "⏻  " --width 20 --lines 4) || chosen=""
+      chosen=$(printf '%s\n' "󰌾  Lock" "󰗽  Log out" "󰤄  Suspend" "󰜉  Reboot" "󰐥  Shut down" \
+        | fuzzel --dmenu --prompt "⏻  " --width 20 --lines 5) || chosen=""
       case "$chosen" in
+        *"Lock")      loginctl lock-session ;;
         *"Log out")   niri msg action quit --skip-confirmation ;;
         *"Suspend")   systemctl suspend ;;
         *"Reboot")    systemctl reboot ;;
@@ -375,6 +380,7 @@ in
     powerMenu # Mod+Shift+E — fuzzel session menu (logout/suspend/reboot/off)
     wlsunset # blue-light filter engine (driven by the nightlight script below)
     nightlight # wlsunset manager + backs the waybar custom/nightlight widget
+    swayidle # locks before sleep / on lock-session (spawned by niri); swaylock is programs.swaylock
     grim # screenshot capture backend for the swappy region grab
     slurp # Nord-tinted region selector for the swappy grab
     swappy # screenshot annotation (Mod+Shift+S)
@@ -410,7 +416,7 @@ in
   # host because niri won't start if an included file is missing; the desktop's
   # copy is empty.
   xdg.configFile."niri/host.kdl".text =
-    if osConfig.networking.hostName == "jakek-laptop" then
+    if isLaptop then
       ''
         // Framework 13 internal panel (2880x1920 -> 1920x1280 logical). 1.5 divides
         // the panel evenly, so niri can render it without rounding.
@@ -422,9 +428,12 @@ in
         // rather than merging into it, so repeat the shared settings here.
         input {
             touchpad {
-                tap
+                // No `tap`: only a physical press clicks on the laptop.
                 natural-scroll
                 accel-speed 0.65
+                // Two-finger press = right click, three = middle (instead of
+                // libinput's default bottom-corner button areas).
+                click-method "clickfinger"
             }
             mouse {
                 natural-scroll
@@ -535,8 +544,9 @@ in
         "pulseaudio"
         "network"
         "custom/protonvpn"
-        "tray"
-      ];
+      ]
+      ++ lib.optional isLaptop "battery"
+      ++ [ "tray" ];
 
       "niri/workspaces".format = "{icon}";
 
@@ -682,6 +692,26 @@ in
         on-click = "protonvpn-app";
       };
 
+      # Laptop only (see modules-right). The warning/critical classes fire at
+      # these capacities while discharging and colour the module.
+      battery = {
+        states = {
+          warning = 30;
+          critical = 15;
+        };
+        format = "{icon} {capacity}%";
+        format-charging = "󰂄 {capacity}%";
+        format-plugged = "󰚥 {capacity}%";
+        format-icons = [
+          "󰁺"
+          "󰁼"
+          "󰁾"
+          "󰂀"
+          "󰁹"
+        ];
+        tooltip-format = "{timeTo} · {power:.1f} W";
+      };
+
       tray = {
         spacing = 8;
         icon-size = 16;
@@ -713,7 +743,7 @@ in
 
       #custom-webshortcuts, #workspaces, #window, #clock, #custom-media, #cpu, #memory,
       #custom-temp, #custom-nightlight, #custom-weather, #pulseaudio, #network,
-      #custom-protonvpn, #tray {
+      #custom-protonvpn, #battery, #tray {
         padding: 0 9px;
         margin: 4px 1px;
       }
@@ -758,7 +788,8 @@ in
       /* Ambient readouts. Monochrome at rest — they are glanceable context, not
          alerts, and they change often enough that colour would make the bar
          twitch in peripheral vision. */
-      #pulseaudio, #network, #custom-weather, #custom-media, #cpu, #memory, #custom-temp {
+      #pulseaudio, #network, #custom-weather, #custom-media, #cpu, #memory, #custom-temp,
+      #battery {
         color: #${ui.textMute};
       }
       #custom-media.paused { color: #${ui.textFaint}; }
@@ -769,6 +800,15 @@ in
         color: #${ui.err};
         animation: blink 1s steps(2, start) infinite;
       }
+
+      /* Battery escalates like thermals, but only while discharging — plugged
+         in at 20% isn't something you need to act on. */
+      #battery.discharging.warning { color: #${ui.warn}; }
+      #battery.discharging.critical {
+        color: #${ui.err};
+        animation: blink 1s steps(2, start) infinite;
+      }
+      #battery.charging { color: #${ui.ok}; }
 
       /* Toggles: lit when on, faint when off. State reads as presence/absence
          of light rather than as two competing colours. */
@@ -810,6 +850,44 @@ in
   dconf.settings."org/gnome/desktop/interface" = {
     color-scheme = "prefer-dark";
     gtk-theme = "Nordic";
+  };
+
+  # Screen locker, run by swayidle (spawned in config.kdl) before sleep and on
+  # `loginctl lock-session`. Same ground as the wallpaper; the ring stays quiet
+  # at rest and only takes colour to say something: accent while typing,
+  # warn while checking, err on a wrong password. Its PAM entry is in
+  # modules/common.nix.
+  programs.swaylock = {
+    enable = true;
+    settings = {
+      color = ui.bg;
+      font = "JetBrainsMono Nerd Font";
+      font-size = 18;
+      indicator-radius = 90;
+      indicator-thickness = 8;
+      show-failed-attempts = true;
+      ignore-empty-password = true;
+
+      inside-color = "${ui.surface1}ee";
+      inside-clear-color = "${ui.surface1}ee";
+      inside-ver-color = "${ui.surface1}ee";
+      inside-wrong-color = "${ui.surface1}ee";
+      ring-color = ui.lineStrong;
+      ring-clear-color = ui.textFaint;
+      ring-ver-color = ui.warn;
+      ring-wrong-color = ui.err;
+      key-hl-color = ui.accent;
+      bs-hl-color = ui.err;
+      line-color = "00000000";
+      line-clear-color = "00000000";
+      line-ver-color = "00000000";
+      line-wrong-color = "00000000";
+      separator-color = "00000000";
+      text-color = ui.text;
+      text-clear-color = ui.textDim;
+      text-ver-color = ui.warn;
+      text-wrong-color = ui.err;
+    };
   };
 
   # fuzzel launcher (Mod+D / Mod+Space) — Nord colors, rounded to match waybar.

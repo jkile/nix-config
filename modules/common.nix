@@ -100,6 +100,12 @@
 
   programs.niri.enable = true;
 
+  # PAM entry for swaylock (niri's locker, configured in home.nix) — without it
+  # swaylock can't check the password and never unlocks. Password only: with
+  # pam_fprintd in the stack (the laptop has fprintd) swaylock waits on the
+  # fingerprint reader before it will accept a typed password.
+  security.pam.services.swaylock.fprintAuth = false;
+
   # Run Electron/Chromium apps (Discord, Zed, etc.) natively on Wayland rather
   # than through XWayland — sharper rendering, proper fractional scaling, and no
   # dependence on the X server. (XWayland itself is available via
